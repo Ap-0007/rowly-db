@@ -13,6 +13,7 @@
   import type { FindMatch } from "$lib/results/gridFind";
   import { CHUNK_ROWS, GROUP_COLS, chunkWindow, groupWindow, rowAtVisual, type ChunkWindow } from "$lib/results/gridWindow";
   import { onePerFrame } from "$lib/onePerFrame";
+  import { clampToBody, edgeScrollStep } from "$lib/results/gridAutoScroll";
   import { NAVIGATION_KEYS, navigationTarget, type GridBounds, type GridCell } from "$lib/results/gridNavigation";
   import { numpadText } from "$lib/numpadKeys";
   import {
@@ -1194,7 +1195,10 @@
   // Un solo listener por tipo de evento en el <tbody> en vez de tres por
   // celda: la fila/columna salen de la posicion de la celda en la tabla.
   function cellFromEvent(event: Event): { row: number; col: number } | null {
-    const target = event.target;
+    return cellFromTarget(event.target);
+  }
+
+  function cellFromTarget(target: EventTarget | null): { row: number; col: number } | null {
     const cell = target instanceof Element ? target.closest("td") : null;
     const row = cell?.parentElement;
     const section = row?.parentElement;
@@ -1848,6 +1852,49 @@
     }
     window.addEventListener("pointerup", onGlobalPointerUp);
     return () => window.removeEventListener("pointerup", onGlobalPointerUp);
+  });
+
+  // Arrastrando fuera del area de celdas, la vista sigue de largo y la
+  // seleccion crece hasta la celda que queda bajo el puntero. pointerover no
+  // sirve aqui: con el mouse quieto fuera del grid no llega ningun evento.
+  $effect(() => {
+    if (!isDragSelecting) return;
+    let x = 0;
+    let y = 0;
+    let frame = 0;
+    let moved = false;
+    function onMove(event: PointerEvent) {
+      moved = true;
+      x = event.clientX;
+      y = event.clientY;
+    }
+    function tick() {
+      frame = requestAnimationFrame(tick);
+      const el = viewportEl;
+      if (!el || !selection || !moved) return;
+      const rect = el.getBoundingClientRect();
+      const left = rect.left + rowNumberWidth;
+      const top = rect.top + headerHeight;
+      const dx = edgeScrollStep(x, left, rect.right);
+      const dy = edgeScrollStep(y, top, rect.bottom);
+      if (dx === 0 && dy === 0) return;
+      el.scrollBy({ left: dx, top: dy });
+      const inset = 12;
+      const target = document.elementFromPoint(
+        clampToBody(x, left, rect.right, inset),
+        clampToBody(y, top, rect.bottom, inset),
+      );
+      const cell = cellFromTarget(target);
+      if (cell && (cell.row !== selection.endRow || cell.col !== selection.endCol)) {
+        selection = { ...selection, endRow: cell.row, endCol: cell.col };
+      }
+    }
+    window.addEventListener("pointermove", onMove);
+    frame = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(frame);
+    };
   });
 
   // --- Scrollbars a medida -------------------------------------------
