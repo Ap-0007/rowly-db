@@ -1,9 +1,10 @@
 name: Pages
 
-# Publica la landing (site/) en GitHub Pages. Se genera con la versión de la
+# Publica la web (site/) en GitHub Pages. Se genera con la versión de la
 # última release publicada, así que también se vuelve a publicar cuando
 # termina el workflow Release: los enlaces apuntan siempre a archivos que ya
-# existen. Con un dominio propio, basta con la variable SITE_URL del
+# existen. README.md también la regenera: la tabla de motores sale de ahí.
+# Con un dominio propio, basta con la variable SITE_URL del
 # repositorio (por ejemplo https://ejemplo.com/); el CNAME se genera solo.
 
 on:
@@ -11,6 +12,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "README.md"
       - ".github/scripts/render-site.py"
       - ".github/workflows/pages.yml"
   workflow_run:

@@ -1,0 +1,90 @@
+{
+  "about": "Páginas de comunidad que genera .github/scripts/render-site.py con hub.html y area.html. giscus es la única configuración de los comentarios: los IDs salen de la API GraphQL de GitHub (repository.id y discussionCategories) o de https://giscus.app. Con repoId o categoryId vacíos, las páginas muestran un enlace a GitHub en lugar del widget.",
+  "giscus": {
+    "repo": "anderson-andres-dev/rowly-db",
+    "repoId": "R_kgDOUk-CPw",
+    "category": "Website comments",
+    "categoryId": "DIC_kwDOUk-CP84DIGhh",
+    "categoryUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/categories/website-comments"
+  },
+  "languages": {
+    "en": {
+      "lang": "en",
+      "locale": "en_US",
+      "path": "community/",
+      "home": "",
+      "otherName": "Español",
+      "otherCode": "ES",
+      "title": "Community",
+      "description": "Ideas, feedback, problems and questions about Rowly DB. Each area has a conversation you join with your GitHub account.",
+      "lede": "Each area has a conversation on this site. You comment with your GitHub account.",
+      "channels": [
+        { "title": "Comment in an area on this site", "text": "Short ideas, impressions and questions, in the conversation of each area below." },
+        { "title": "Start a topic in GitHub Discussions", "text": "When a proposal or a question needs its own thread.", "url": "https://github.com/anderson-andres-dev/rowly-db/discussions", "link": "Go to Discussions" },
+        { "title": "Report a reproducible bug in GitHub Issues", "text": "With the steps, the version and your system, so it can be fixed.", "url": "https://github.com/anderson-andres-dev/rowly-db/issues/new", "link": "Open an issue" }
+      ],
+      "areasLabel": "Areas",
+      "open": "Open conversation",
+      "notSupport": "This is a community space, not a support service. The maintainer and other users answer when they can.",
+      "tabsLabel": "Community areas",
+      "comments": "Comments",
+      "fallback": "Comments for this area live in GitHub Discussions.",
+      "fallbackLink": "Open the conversations on GitHub",
+      "images": "To attach a screenshot, open this conversation on GitHub",
+      "warn": "Do not paste passwords, connection strings or private data. Security problems are not reported here.",
+      "ui": {
+        "skip": "Skip to content", "brand": "Rowly DB home", "main": "Main", "menu": "Menu", "siteMenu": "Site menu",
+        "features": "Features", "databases": "Databases", "download": "Download", "community": "Community",
+        "theme": "Theme", "themeDark": "Switch to dark theme", "themeLight": "Switch to light theme", "themeSwitch": "Switch theme",
+        "footer": "Footer", "about": "Free and open source SQL client. MIT or Apache-2.0.",
+        "product": "Product", "project": "Project", "site": "Site", "questions": "Questions", "releases": "Releases", "issues": "Issues",
+        "docs": "Documentation", "docsUrl": "https://github.com/anderson-andres-dev/rowly-db#readme", "license": "License", "breadcrumb": "Breadcrumb"
+      },
+      "areas": [
+        { "id": "ideas", "slug": "ideas", "title": "Ideas and features", "text": "Features you would like to see, and the task you want them for.", "own": "Start your own topic in Ideas", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/new?category=ideas" },
+        { "id": "feedback", "slug": "feedback", "title": "Feedback", "text": "What works, what gets in the way, what you would change.", "own": "Start your own topic in General", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/new?category=general" },
+        { "id": "problems", "slug": "problems", "title": "Problems and errors", "text": "Something failed or looks wrong. Say what you did, what happened and your version.", "own": "Report a reproducible bug in Issues", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/issues/new" },
+        { "id": "questions", "slug": "questions", "title": "Questions", "text": "How to do something, setup, and general conversation.", "own": "Ask in Q&A", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/new?category=q-a" }
+      ]
+    },
+    "es": {
+      "lang": "es",
+      "locale": "es_ES",
+      "path": "es/comunidad/",
+      "home": "es/",
+      "otherName": "English",
+      "otherCode": "EN",
+      "title": "Comunidad",
+      "description": "Ideas, comentarios, problemas y preguntas sobre Rowly DB. Cada área tiene una conversación en la que participas con tu cuenta de GitHub.",
+      "lede": "Cada área tiene una conversación en este sitio. Comentas con tu cuenta de GitHub.",
+      "channels": [
+        { "title": "Comenta en un área de este sitio", "text": "Ideas breves, impresiones y preguntas, en la conversación de cada área." },
+        { "title": "Abre un tema en GitHub Discussions", "text": "Cuando una propuesta o una pregunta necesita su propio hilo.", "url": "https://github.com/anderson-andres-dev/rowly-db/discussions", "link": "Ir a Discussions" },
+        { "title": "Reporta un error reproducible en GitHub Issues", "text": "Con los pasos, la versión y tu sistema, para poder corregirlo.", "url": "https://github.com/anderson-andres-dev/rowly-db/issues/new", "link": "Abrir un issue" }
+      ],
+      "areasLabel": "Áreas",
+      "open": "Abrir conversación",
+      "notSupport": "Es un espacio de comunidad, no un servicio de soporte. Responden el mantenedor y otras personas cuando pueden.",
+      "tabsLabel": "Áreas de la comunidad",
+      "comments": "Comentarios",
+      "fallback": "Los comentarios de esta área están en GitHub Discussions.",
+      "fallbackLink": "Abrir las conversaciones en GitHub",
+      "images": "Para adjuntar una captura, abre esta conversación en GitHub",
+      "warn": "No pegues contraseñas, cadenas de conexión ni datos privados. Los problemas de seguridad no se reportan aquí.",
+      "ui": {
+        "skip": "Saltar al contenido", "brand": "Inicio de Rowly DB", "main": "Principal", "menu": "Menú", "siteMenu": "Menú del sitio",
+        "features": "Funciones", "databases": "Bases de datos", "download": "Descargar", "community": "Comunidad",
+        "theme": "Tema", "themeDark": "Cambiar a tema oscuro", "themeLight": "Cambiar a tema claro", "themeSwitch": "Cambiar tema",
+        "footer": "Pie de página", "about": "Cliente SQL libre y de código abierto. MIT o Apache-2.0.",
+        "product": "Producto", "project": "Proyecto", "site": "Sitio", "questions": "Preguntas", "releases": "Versiones", "issues": "Issues",
+        "docs": "Documentación", "docsUrl": "https://github.com/anderson-andres-dev/rowly-db/blob/main/README.es.md", "license": "Licencia", "breadcrumb": "Ruta"
+      },
+      "areas": [
+        { "id": "ideas", "slug": "ideas", "title": "Ideas y funciones", "text": "Funciones que te gustaría ver y la tarea para la que las quieres.", "own": "Abrir tu propio tema en Ideas", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/new?category=ideas" },
+        { "id": "feedback", "slug": "comentarios", "title": "Comentarios y mejoras", "text": "Qué funciona, qué estorba, qué cambiarías.", "own": "Abrir tu propio tema en General", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/new?category=general" },
+        { "id": "problems", "slug": "problemas", "title": "Problemas y errores", "text": "Algo falló o se ve mal. Cuenta qué hiciste, qué pasó y tu versión.", "own": "Reportar un error reproducible en Issues", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/issues/new" },
+        { "id": "questions", "slug": "preguntas", "title": "Preguntas", "text": "Cómo hacer algo, configuración y conversación general.", "own": "Preguntar en Q&A", "ownUrl": "https://github.com/anderson-andres-dev/rowly-db/discussions/new?category=q-a" }
+      ]
+    }
+  }
+}
