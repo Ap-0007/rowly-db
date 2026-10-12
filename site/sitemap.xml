@@ -12,4 +12,5 @@
     <xhtml:link rel="alternate" hreflang="en" href="{{site}}"/>
     <xhtml:link rel="alternate" hreflang="es" href="{{site}}es/"/>
   </url>
+{{community}}
 </urlset>
