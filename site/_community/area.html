@@ -1,0 +1,27 @@
+  <div class="page-band">
+    <div class="wrap">
+      <div class="sheet">
+        <div class="page-head is-compact">
+          <nav class="crumbs" aria-label="[[ui.breadcrumb]]"><a href="{{base}}[[path]]">[[title]]</a> / [[areaTitle]]</nav>
+          <h1>[[areaTitle]]</h1>
+          <p class="lede">[[areaText]]</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="sheet">
+      <nav class="area-tabs" aria-label="[[tabsLabel]]">
+[[tabs]]
+      </nav>
+      <section class="conversation" aria-labelledby="comments-title">
+        <h2 id="comments-title" class="sr-only">[[comments]]</h2>
+[[warning]]
+[[commentsBlock]]
+        <div class="conv-links">
+          <a href="[[giscus.categoryUrl]]" data-discussion-link><svg aria-hidden="true"><use href="#i-image"/></svg>[[images]]<svg aria-hidden="true"><use href="#i-external"/></svg></a>
+          <a href="[[areaOwnUrl]]">[[areaOwn]]<svg aria-hidden="true"><use href="#i-external"/></svg></a>
+        </div>
+      </section>
+    </div>
+  </div>

@@ -1,39 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Page not found · Rowly DB</title>
+<title>Page not found | Rowly DB</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#fafbfa" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#070c12" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F5FAFA">
 <link rel="icon" type="image/svg+xml" href="{{base}}assets/img/icon.svg">
 <link rel="stylesheet" href="{{base}}assets/style.css">
+<script>document.documentElement.className = "js"; try { var t = localStorage.getItem("rowly:theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
 </head>
 <body>
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="{{base}}" aria-label="Rowly DB home">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="{{base}}assets/img/logo-dark.svg">
-        <img src="{{base}}assets/img/logo-light.svg" alt="" width="94" height="28">
-      </picture>
+      <span class="themed"><img class="t-light" src="{{base}}assets/img/logo-light.svg" alt="" width="88" height="26"><img class="t-dark" src="{{base}}assets/img/logo-dark.svg" alt="" width="88" height="26"></span>
     </a>
   </div>
 </header>
-<main class="wrap lost">
-  <p>404</p>
-  <h1>This page does not exist</h1>
-  <p>The link may be old, or the page moved when the site changed address.</p>
-  <div class="actions">
-    <a class="btn btn-accent btn-large" href="{{base}}">Go to the home page</a>
-    <a class="btn btn-ghost btn-large" href="{{base}}#downloads">Downloads</a>
+<main class="wrap">
+  <div class="sheet lost">
+    <p class="code">404</p>
+    <h1>This page does not exist</h1>
+    <p>The link may be old, or the page moved when the site changed address.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="{{base}}">Go to the home page</a>
+      <a class="btn btn-line" href="{{base}}#downloads">Downloads</a>
+    </div>
+    <p lang="es">¿Buscas la versión en español? <a href="{{base}}es/">Rowly DB en español</a>.</p>
   </div>
-  <p lang="es">¿Buscas la versión en español? <a href="{{base}}es/">Rowly DB en español</a>.</p>
 </main>
-<footer class="footer wrap">
-  <div class="footer-brand"><img src="{{base}}assets/img/icon.svg" alt="" width="22" height="22"><span>Rowly DB</span></div>
-  <p class="footer-about">MIT or Apache-2.0 · <a href="https://github.com/anderson-andres-dev/rowly-db/issues/new">Report a broken link</a></p>
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-brand">
+      <p>MIT or Apache-2.0. <a href="https://github.com/anderson-andres-dev/rowly-db/issues/new">Report a broken link</a></p>
+    </div>
+  </div>
 </footer>
 </body>
 </html>
