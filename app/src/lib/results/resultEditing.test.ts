@@ -6,11 +6,15 @@ import {
   EMPTY_EDITS,
   addRow,
   buildChanges,
+  clearedCell,
   deleteRows,
   fillCells,
   pendingCount,
+  resolveCell,
   revert,
   setCellValue,
+  typedCell,
+  type EditableColumn,
   type ResultEditInfo,
 } from "./resultEditing";
 
@@ -107,5 +111,44 @@ describe("fillCells: escribir con varias celdas seleccionadas", () => {
     const edits = fillCells(withRow, info, rows, [{ minRow: 2, maxRow: 3, minCol: 1, maxCol: 1 }], value);
     expect(edits.updates.get(2)?.get(1)).toEqual(value);
     expect(edits.inserted[0][1]).toEqual(value);
+  });
+});
+
+// #104: NULL desde el teclado (Supr, escribir NULL) sin el boton de la esquina.
+describe("NULL desde el teclado", () => {
+  const nullable: EditableColumn = { name: "note", dataType: "text", nullable: true, isPrimaryKey: false, defaultValue: null, generated: false };
+  const required: EditableColumn = { ...nullable, name: "title", nullable: false };
+  const withDefault: EditableColumn = { ...nullable, name: "seve", defaultValue: "'low'" };
+
+  it("NULL escrito en una columna que admite NULL es NULL, sin importar mayusculas", () => {
+    for (const text of ["NULL", "null", "Null"]) expect(resolveCell(typedCell(text), nullable, false)).toEqual({ kind: "null" });
+  });
+
+  it("'NULL' entre comillas es el texto NULL, y lo demas queda como se escribio", () => {
+    expect(resolveCell(typedCell("'NULL'"), nullable, false)).toEqual({ kind: "text", value: "NULL" });
+    expect(resolveCell(typedCell("nullish"), nullable, false)).toEqual({ kind: "text", value: "nullish" });
+    expect(resolveCell(typedCell(" NULL"), nullable, false)).toEqual({ kind: "text", value: " NULL" });
+    expect(resolveCell(typedCell(""), nullable, false)).toEqual({ kind: "text", value: "" });
+  });
+
+  it("en una columna NOT NULL lo escrito es texto, comillas incluidas", () => {
+    expect(resolveCell(typedCell("NULL"), required, false)).toEqual({ kind: "text", value: "NULL" });
+    expect(resolveCell(typedCell("'NULL'"), required, true)).toEqual({ kind: "text", value: "'NULL'" });
+  });
+
+  it("Supr: NULL, o DEFAULT solo en una fila nueva con valor por defecto", () => {
+    expect(resolveCell(clearedCell(), nullable, true)).toEqual({ kind: "null" });
+    expect(resolveCell(clearedCell(), withDefault, true)).toEqual({ kind: "default" });
+    expect(resolveCell(clearedCell(), withDefault, false)).toEqual({ kind: "null" });
+  });
+
+  it("con varias celdas, la regla se resuelve por columna y por fila nueva", () => {
+    const withRow = addRow(EMPTY_EDITS, info);
+    const edits = fillCells(withRow, info, rows, [{ minRow: 0, maxRow: 3, minCol: 0, maxCol: 2 }], clearedCell());
+    // id es generada y la tercera columna no es editable: no se tocan.
+    expect(edits.updates.get(0)).toEqual(new Map([[1, { kind: "null" }]]));
+    expect(edits.inserted[0]).toEqual([{ kind: "default" }, { kind: "default" }, { kind: "null" }]);
+    const typed = fillCells(EMPTY_EDITS, info, rows, [{ minRow: 0, maxRow: 0, minCol: 1, maxCol: 1 }], typedCell("NULL"));
+    expect(typed.updates.get(0)?.get(1)).toEqual({ kind: "null" });
   });
 });

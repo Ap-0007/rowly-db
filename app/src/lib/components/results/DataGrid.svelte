@@ -27,7 +27,12 @@
   } from "$lib/results/gridClipboard";
   import {
     EMPTY_EDITS,
+    clearedCell,
     originalValue,
+    resolveCell,
+    sameValue,
+    typedCell,
+    type CellInput,
     type CellValue,
     type PendingEdits,
     type ResultEditInfo,
@@ -74,7 +79,7 @@
     oncommitcell?: (row: number, col: number, value: CellValue) => void;
     // Editar con varias celdas seleccionadas: el valor va a todas (menos a
     // las filas `hidden`, ocultas por "Filtrar filas").
-    onfillcells?: (ranges: RowRange[], value: CellValue, hidden: ReadonlySet<number> | null) => void;
+    onfillcells?: (ranges: RowRange[], value: CellInput, hidden: ReadonlySet<number> | null) => void;
     oneditblocked?: (reason: string) => void;
     onselectionchange?: (range: RowRange | null) => void;
     // Filas, celdas y suma de la seleccion (results/gridSelectionSummary.ts), para
@@ -880,6 +885,13 @@
       requestEdit(row, col, typed);
       return;
     }
+    // Supr deja las celdas en NULL, o en DEFAULT en una fila nueva cuya
+    // columna lo tiene (#104). Ctrl+Supr sigue siendo eliminar la fila.
+    if (event.key === "Delete" && !mod && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      clearCells(row, col);
+      return;
+    }
     if (event.key === "Backspace" && !mod && !event.altKey) {
       event.preventDefault();
       if (!fillRangesFor(row, col)) selectCell(row, col);
@@ -1074,13 +1086,14 @@
     const targets = fillTargets;
     fillTargets = null;
     if (commit && targets && (editTyped || editValue !== editStartValue)) {
-      onfillcells(targets, { kind: "text", value: editValue }, hiddenRows);
+      onfillcells(targets, typedCell(editValue), hiddenRows);
       for (const range of targets) addEffect(range, "commit");
     } else if (commit) {
       const previous = valueAt(current.row, current.col);
-      const unchanged = previous.kind === "text" ? previous.value === editValue : editValue === "";
+      const next = cellValueFor(typedCell(editValue), current.row, current.col);
+      const unchanged = previous.kind === "text" || next.kind !== "text" ? sameValue(previous, next) : editValue === "";
       if (!unchanged) {
-        oncommitcell(current.row, current.col, { kind: "text", value: editValue });
+        oncommitcell(current.row, current.col, next);
         addEffect({ minRow: current.row, maxRow: current.row, minCol: current.col, maxCol: current.col }, "commit");
       }
     }
@@ -1089,6 +1102,31 @@
       return;
     }
     if (refocus) void tick().then(() => cellElement(current.row, current.col)?.focus({ preventScroll: true }));
+  }
+
+  // Lo que una regla (NULL escrito, Supr) da en una celda concreta.
+  function cellValueFor(input: CellInput, row: number, col: number): CellValue {
+    const column = editInfo?.columns[col];
+    return column ? resolveCell(input, column, row >= rows.length) : typeof input === "function" ? { kind: "null" } : input;
+  }
+
+  // Supr: la seleccion (o la celda) a NULL / DEFAULT, sin abrir el editor.
+  function clearCells(row: number, col: number) {
+    const blocked = editableColumn(row, col);
+    if (blocked) {
+      oneditblocked(blocked);
+      return;
+    }
+    const targets = fillRangesFor(row, col);
+    if (targets) {
+      onfillcells(targets, clearedCell(), hiddenRows);
+      for (const range of targets) addEffect(range, "commit");
+      return;
+    }
+    const next = cellValueFor(clearedCell(), row, col);
+    if (sameValue(valueAt(row, col), next)) return;
+    oncommitcell(row, col, next);
+    addEffect({ minRow: row, maxRow: row, minCol: col, maxCol: col }, "commit");
   }
 
   function setEditingNull() {
@@ -1118,6 +1156,12 @@
     const current = editing;
     if (!current) return;
     const mod = event.ctrlKey || event.metaKey || event.altKey;
+    // Ctrl+Shift+N: NULL, como el boton de la esquina (#104).
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.code === "KeyN") {
+      event.preventDefault();
+      setEditingNull();
+      return;
+    }
     if (event.key === "Enter" && !mod) {
       event.preventDefault();
       finishEditing(true);
@@ -2409,7 +2453,7 @@
               <button
                 type="button"
                 class="null-chip"
-                use:tooltip={$t("grid.edit.setNull")}
+                use:tooltip={{ label: $t("grid.edit.setNull"), shortcut: "Ctrl+Shift+N" }}
                 onpointerdown={(event) => event.preventDefault()}
                 onclick={setEditingNull}>NULL</button
               >
