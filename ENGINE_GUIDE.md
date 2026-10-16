@@ -107,7 +107,7 @@ Rowly DB uses `sqlparser`. Pick its dialect for the engine (`parser`). Then:
 
 A driver is a crate in `crates/drivers/<protocol>` that implements `DbConnector` (`crates/driver-core/src/lib.rs`).
 
-Required: `connect`, `server`, `tls_status`, `list_schemas`, `current_schema`, `introspect_schema`, `table_definition`, `execute_query`, `execute_in_transaction`, `stream_query`. With a default you may override: `list_tables`, `execute_query_cancellable`, `console_epoch`, `cancel_query`.
+Required: `connect`, `server`, `tls_status`, `list_schemas`, `current_schema`, `introspect_schema`, `table_definition`, `execute_query`, `execute_in_transaction`, `stream_query`. With a default you may override: `list_tables`, `execute_query_cancellable`, `console_epoch`, `cancel_query`, and `list_databases` with `current_database` (only for an engine where each database is its own connection, like PostgreSQL: they give the database picker of a profile without a database).
 
 Rules the contract documents and the tests check:
 

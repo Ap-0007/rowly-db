@@ -197,7 +197,7 @@
                     <EnvironmentBadge environment={profile.environment} compact />
                   {/if}
                 </span>
-                <span class="option-detail">{driver.name} · {profile.database}@{profile.host}</span>
+                <span class="option-detail">{driver.name} · {profile.database || $t("connections.form.databaseAll")}@{profile.host}</span>
               </span>
               {#if profile.id === activeProfileId}
                 <Check size={14} class="option-check" aria-label={$t("connections.switcher.current")} />

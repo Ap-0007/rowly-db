@@ -406,6 +406,19 @@ pub trait DbConnector: Send + Sync {
 
     async fn list_schemas(&self) -> Result<Vec<String>, DriverError>;
 
+    /// The databases a profile without a database can switch to, on engines
+    /// where each database is its own connection (Postgres). Empty where the
+    /// databases are the schemas of one connection (MySQL).
+    async fn list_databases(&self) -> Result<Vec<String>, DriverError> {
+        Ok(Vec::new())
+    }
+
+    /// The database this connection is on, where that is a separate level
+    /// from the schemas (see `list_databases`).
+    async fn current_database(&self) -> Result<Option<String>, DriverError> {
+        Ok(None)
+    }
+
     /// The schema unqualified names resolve against for this connection:
     /// the database of the profile on MySQL, `current_schema()` on Postgres.
     async fn current_schema(&self) -> Result<String, DriverError>;

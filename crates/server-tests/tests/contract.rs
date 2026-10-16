@@ -3,8 +3,8 @@
 //! version exacta de tools/test-dbs/lines.json:
 //!   cargo test -p rowly-server-tests --test contract -- --ignored --test-threads=1
 use khipu_driver_core::{
-    ConnectionErrorKind, DbConnector, DriverError, ParameterMode, QueryExecutionOptions,
-    QueryExecutionResult, RelationKind, RoutineKind, TlsMode,
+    ConnectionConfig, ConnectionErrorKind, DbConnector, DriverError, ParameterMode,
+    QueryExecutionOptions, QueryExecutionResult, RelationKind, RoutineKind, TlsMode,
 };
 use rowly_server_tests::*;
 
@@ -64,6 +64,56 @@ async fn connects_and_lists_schemas_and_tables() {
         );
         for table in &tables {
             assert_eq!(table.schema, schema);
+        }
+
+        // Un perfil sin base (#105): MySQL y MariaDB quedan en el servidor y
+        // sus bases son los schemas; PostgreSQL abre `postgres` y lista las
+        // bases a las que se puede pasar.
+        let without = engine
+            .connector(&ConnectionConfig {
+                database: String::new(),
+                ..engine.config_with_tls(TlsMode::Disabled)
+            })
+            .await
+            .unwrap_or_else(|error| panic!("{engine:?} sin base: {error}"));
+        let databases = without.list_databases().await.expect("list_databases");
+        let current = without.current_database().await.expect("current_database");
+        if engine.is_mysql_family() {
+            assert_eq!(
+                (current, databases),
+                (None, Vec::<String>::new()),
+                "{engine:?}"
+            );
+            let schemas = without.list_schemas().await.expect("list_schemas");
+            for expected in ["sakila", "rowly_test"] {
+                assert!(
+                    schemas.iter().any(|name| name == expected),
+                    "{engine:?}: falta {expected} en {schemas:?}"
+                );
+            }
+            let default = without.current_schema().await.expect("current_schema");
+            assert!(
+                !["information_schema", "mysql", "performance_schema", "sys"]
+                    .contains(&default.as_str()),
+                "{engine:?}: sin base, el schema por defecto es uno del sistema: {default}"
+            );
+        } else {
+            assert_eq!(current.as_deref(), Some("postgres"), "{engine:?}");
+            for expected in ["pagila", "postgres"] {
+                assert!(
+                    databases.iter().any(|name| name == expected),
+                    "{engine:?}: falta {expected} en {databases:?}"
+                );
+            }
+            assert!(
+                !databases.iter().any(|name| name.starts_with("template")),
+                "{engine:?}: ofrece plantillas: {databases:?}"
+            );
+            let on_pagila = connector
+                .current_database()
+                .await
+                .expect("current_database");
+            assert_eq!(on_pagila.as_deref(), Some("pagila"), "{engine:?}");
         }
     }
 }

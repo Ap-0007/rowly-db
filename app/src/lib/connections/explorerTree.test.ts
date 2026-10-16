@@ -39,6 +39,8 @@ function explorer(...schemas: SchemaObjects[]): DatabaseExplorer {
     tls: { encrypted: true, detail: "TLSv1.3", fellBack: false },
     defaultSchema: schemas[0]?.schema ?? "core",
     availableSchemas: schemas.map((objects) => objects.schema),
+    database: null,
+    availableDatabases: [],
     schemas,
   };
 }

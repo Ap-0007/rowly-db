@@ -52,6 +52,7 @@
     onopenfolder,
     onopentable = () => {},
     onschemaschange,
+    ondatabasechange,
   }: {
     explorer: DatabaseExplorer | null;
     // "schema@host", la misma etiqueta de origen que usa Workspace.svelte.
@@ -71,7 +72,12 @@
     onopentable?: (schema: string, name: string) => void;
     // Schemas extra a mostrar (el por defecto se incluye siempre).
     onschemaschange: (schemas: string[]) => void;
+    // Pasar a otra base (#105): solo en un perfil sin base fija, en un motor
+    // donde cada base es otra conexion. Sin esto no hay selector de base.
+    ondatabasechange?: (database: string) => void;
   } = $props();
+
+  const canSwitchDatabase = $derived(!!ondatabasechange && !!explorer?.database && explorer.availableDatabases.length > 1);
 
   type IconComponent = typeof Table;
 
@@ -137,16 +143,18 @@
   // filtro activo). Sobrevive a recargas del arbol porque las claves son
   // estables (ver ExplorerNode.key).
   let expanded = $state(new Map<string, boolean>());
-  let schemaPickerOpen = $state(false);
-  let schemaPicker = $state<HTMLElement>();
-  let schemaMenu = $state<HTMLElement>();
+  // Los selectores de la fila de la conexion: la base (#105, solo en un
+  // perfil sin base fija) y los schemas visibles.
+  let openPicker = $state<"databases" | "schemas" | null>(null);
+  let pickers = $state<HTMLElement>();
+  let pickerMenu = $state<HTMLElement>();
   // El menu se dibuja fuera de .tree-scroll: dentro, el scroll y la mascara
   // del desvanecido lo recortaban a una o dos filas (#106). Su posicion sale
   // de la fila de la conexion; abre hacia arriba si abajo no cabe.
-  let schemaMenuPlace = $state({ left: 0, right: 0, top: 0, bottom: 0, up: false, maxHeight: 288 });
+  let pickerMenuPlace = $state({ left: 0, right: 0, top: 0, bottom: 0, up: false, maxHeight: 288 });
 
-  function placeSchemaMenu() {
-    const row = schemaPicker?.closest(".connection-row");
+  function placePickerMenu() {
+    const row = pickers?.closest(".connection-row");
     if (!row) return;
     const rect = row.getBoundingClientRect();
     const gap = 2;
@@ -154,7 +162,7 @@
     const below = window.innerHeight - rect.bottom - gap - margin;
     const above = rect.top - gap - margin;
     const up = below < 160 && above > below;
-    schemaMenuPlace = {
+    pickerMenuPlace = {
       left: rect.left + 8,
       right: window.innerWidth - rect.right + 4,
       top: rect.bottom + gap,
@@ -164,9 +172,14 @@
     };
   }
 
-  function toggleSchemaPicker() {
-    if (!schemaPickerOpen) placeSchemaMenu();
-    schemaPickerOpen = !schemaPickerOpen;
+  function togglePicker(kind: "databases" | "schemas") {
+    if (openPicker !== kind) placePickerMenu();
+    openPicker = openPicker === kind ? null : kind;
+  }
+
+  function chooseDatabase(database: string) {
+    openPicker = null;
+    if (database !== explorer?.database) ondatabasechange?.(database);
   }
 
   const filtering = $derived(filter.trim() !== "");
@@ -255,29 +268,29 @@
     onschemaschange(extra);
   }
 
-  function closeSchemaPickerOnOutsideClick(event: PointerEvent) {
+  function closePickerOnOutsideClick(event: PointerEvent) {
     const target = event.target as Node;
-    if (schemaPickerOpen && !schemaPicker?.contains(target) && !schemaMenu?.contains(target)) {
-      schemaPickerOpen = false;
+    if (openPicker && !pickers?.contains(target) && !pickerMenu?.contains(target)) {
+      openPicker = null;
     }
   }
 
   // Fijo en la ventana: si el arbol se desplaza o la ventana cambia, el menu
   // se cerraria lejos de su fila, asi que se cierra.
-  function closeSchemaPicker() {
-    schemaPickerOpen = false;
+  function closePicker() {
+    openPicker = null;
   }
 
-  function closeSchemaPickerOnEscape(event: KeyboardEvent) {
-    if (!schemaPickerOpen || event.key !== "Escape") return;
+  function closePickerOnEscape(event: KeyboardEvent) {
+    if (!openPicker || event.key !== "Escape") return;
     event.preventDefault();
     event.stopPropagation();
-    schemaPickerOpen = false;
-    schemaPicker?.querySelector<HTMLButtonElement>(".schema-count")?.focus();
+    pickers?.querySelector<HTMLButtonElement>(`[data-picker="${openPicker}"]`)?.focus();
+    openPicker = null;
   }
 </script>
 
-<svelte:window onpointerdown={closeSchemaPickerOnOutsideClick} onresize={closeSchemaPicker} onkeydown={closeSchemaPickerOnEscape} />
+<svelte:window onpointerdown={closePickerOnOutsideClick} onresize={closePicker} onkeydown={closePickerOnEscape} />
 
 {#if openMenuAt}
   <ContextMenu
@@ -439,7 +452,7 @@
     {/if}
   </div>
 
-  <nav class="tree-scroll" aria-label={$t("explorer.tree.label")} use:scrollFade onscroll={closeSchemaPicker}>
+  <nav class="tree-scroll" aria-label={$t("explorer.tree.label")} use:scrollFade onscroll={closePicker}>
     <ul class="tree" role="tree" use:treeKeys>
       <li role="treeitem" aria-expanded={isConnectionOpen()} aria-selected="false">
         <div class="connection-row">
@@ -465,23 +478,39 @@
             {/if}
           </button>
 
-          {#if explorer && explorer.availableSchemas.length > 1}
-            <div class="schema-picker" bind:this={schemaPicker}>
-              <button
-                type="button"
-                class="schema-count"
-                aria-haspopup="true"
-                aria-expanded={schemaPickerOpen}
-                use:tooltip={$t("explorer.schemas.pick")}
-                onclick={toggleSchemaPicker}
-              >
-                {#if loadingSchemas}
-                  <LoaderCircle size={11} class="spin" aria-label={$t("explorer.schemas.loading")} />
-                {/if}
-                {$t("explorer.schemas.count", { visible: visibleSchemas.size, total: explorer.availableSchemas.length })}
-                <ChevronDown size={11} aria-hidden="true" />
-              </button>
-
+          {#if explorer && (canSwitchDatabase || explorer.availableSchemas.length > 1)}
+            <div class="schema-picker" bind:this={pickers}>
+              {#if canSwitchDatabase}
+                <button
+                  type="button"
+                  class="schema-count"
+                  data-picker="databases"
+                  aria-haspopup="true"
+                  aria-expanded={openPicker === "databases"}
+                  use:tooltip={$t("explorer.databases.pick")}
+                  onclick={() => togglePicker("databases")}
+                >
+                  <span class="picker-value">{explorer.database}</span>
+                  <ChevronDown size={11} aria-hidden="true" />
+                </button>
+              {/if}
+              {#if explorer.availableSchemas.length > 1}
+                <button
+                  type="button"
+                  class="schema-count"
+                  data-picker="schemas"
+                  aria-haspopup="true"
+                  aria-expanded={openPicker === "schemas"}
+                  use:tooltip={$t("explorer.schemas.pick")}
+                  onclick={() => togglePicker("schemas")}
+                >
+                  {#if loadingSchemas}
+                    <LoaderCircle size={11} class="spin" aria-label={$t("explorer.schemas.loading")} />
+                  {/if}
+                  {$t("explorer.schemas.count", { visible: visibleSchemas.size, total: explorer.availableSchemas.length })}
+                  <ChevronDown size={11} aria-hidden="true" />
+                </button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -499,40 +528,58 @@
     </ul>
   </nav>
 
-{#if schemaPickerOpen && explorer}
+{#if openPicker && explorer}
   <div
     class="ui-menu schema-menu"
     role="menu"
-    aria-label={$t("explorer.schemas.menu")}
-    bind:this={schemaMenu}
-    style:left={`${schemaMenuPlace.left}px`}
-    style:right={`${schemaMenuPlace.right}px`}
-    style:top={schemaMenuPlace.up ? null : `${schemaMenuPlace.top}px`}
-    style:bottom={schemaMenuPlace.up ? `${schemaMenuPlace.bottom}px` : null}
-    style:max-height={`${schemaMenuPlace.maxHeight}px`}
+    aria-label={$t(openPicker === "databases" ? "explorer.databases.menu" : "explorer.schemas.menu")}
+    bind:this={pickerMenu}
+    style:left={`${pickerMenuPlace.left}px`}
+    style:right={`${pickerMenuPlace.right}px`}
+    style:top={pickerMenuPlace.up ? null : `${pickerMenuPlace.top}px`}
+    style:bottom={pickerMenuPlace.up ? `${pickerMenuPlace.bottom}px` : null}
+    style:max-height={`${pickerMenuPlace.maxHeight}px`}
   >
-    {#each explorer.availableSchemas as schema (schema)}
-      {@const isDefault = schema === explorer.defaultSchema}
-      <button
-        type="button"
-        role="menuitemcheckbox"
-        aria-checked={visibleSchemas.has(schema)}
-        class="ui-menu-item schema-option"
-        disabled={isDefault || loadingSchemas}
-        use:tooltip={isDefault ? $t("explorer.schemas.defaultTitle") : undefined}
-        onclick={() => toggleSchema(schema)}
-      >
-        <span class="ui-checkbox-box">
-          {#if visibleSchemas.has(schema)}
-            <Check size={10} strokeWidth={3} aria-hidden="true" />
+    {#if openPicker === "databases"}
+      {#each explorer.availableDatabases as database (database)}
+        <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={database === explorer.database}
+          class="ui-menu-item schema-option"
+          disabled={refreshing}
+          onclick={() => chooseDatabase(database)}
+        >
+          <span class="ui-menu-check">
+            {#if database === explorer.database}<Check size={13} aria-hidden="true" />{/if}
+          </span>
+          <span class="label">{database}</span>
+        </button>
+      {/each}
+    {:else}
+      {#each explorer.availableSchemas as schema (schema)}
+        {@const isDefault = schema === explorer.defaultSchema}
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={visibleSchemas.has(schema)}
+          class="ui-menu-item schema-option"
+          disabled={isDefault || loadingSchemas}
+          use:tooltip={isDefault ? $t("explorer.schemas.defaultTitle") : undefined}
+          onclick={() => toggleSchema(schema)}
+        >
+          <span class="ui-checkbox-box">
+            {#if visibleSchemas.has(schema)}
+              <Check size={10} strokeWidth={3} aria-hidden="true" />
+            {/if}
+          </span>
+          <span class="label">{schema}</span>
+          {#if isDefault}
+            <span class="detail">{$t("explorer.schemas.default")}</span>
           {/if}
-        </span>
-        <span class="label">{schema}</span>
-        {#if isDefault}
-          <span class="detail">{$t("explorer.schemas.default")}</span>
-        {/if}
-      </button>
-    {/each}
+        </button>
+      {/each}
+    {/if}
   </div>
 {/if}
 </div>
@@ -892,8 +939,16 @@
   }
 
   .schema-picker {
-    position: static;
+    display: flex;
     flex-shrink: 0;
+    gap: 2px;
+  }
+
+  /* El nombre de la base cede espacio con elipsis, como el de la conexion. */
+  .picker-value {
+    max-width: 9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .schema-count {

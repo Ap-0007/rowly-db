@@ -71,6 +71,8 @@ pub async fn connect(
                 tls: connected.tls,
                 default_schema: connected.default_schema,
                 available_schemas: connected.available_schemas,
+                database: connected.database,
+                available_databases: connected.available_databases,
                 schemas,
                 catalog,
             },

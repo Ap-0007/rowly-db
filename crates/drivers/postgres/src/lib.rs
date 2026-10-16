@@ -53,13 +53,21 @@ const RESTORE_SERVER_TIME_ZONE: &str = "\
         LIMIT 1 \
     ), current_setting('log_timezone')), false)";
 
+/// The database a profile without one opens (#105): the one every server
+/// creates, from which the explorer lists and switches to the others.
+const DEFAULT_DATABASE: &str = "postgres";
+
 async fn open_pool(config: &ConnectionConfig, mode: TlsMode) -> Result<PgPool, sqlx::Error> {
+    let database = match config.database.trim() {
+        "" => DEFAULT_DATABASE,
+        name => name,
+    };
     let options = PgConnectOptions::new()
         .host(&config.host)
         .port(config.port)
         .username(&config.username)
         .password(&config.password)
-        .database(&config.database);
+        .database(database);
     PgPoolOptions::new()
         .acquire_timeout(CONNECT_TIMEOUT)
         .after_connect(|conn, _meta| {
@@ -190,6 +198,28 @@ impl DbConnector for PostgresConnector {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| DriverError::Query(e.to_string()))
+    }
+
+    // Las bases a las que el rol puede conectarse; las plantillas y las que
+    // no aceptan conexiones no se ofrecen.
+    async fn list_databases(&self) -> Result<Vec<String>, DriverError> {
+        sqlx::query_scalar(
+            "SELECT datname::text FROM pg_database \
+             WHERE datallowconn AND NOT datistemplate \
+               AND has_database_privilege(datname, 'CONNECT') \
+             ORDER BY datname",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| DriverError::Query(e.to_string()))
+    }
+
+    async fn current_database(&self) -> Result<Option<String>, DriverError> {
+        sqlx::query_scalar("SELECT current_database()::text")
+            .fetch_one(&self.pool)
+            .await
+            .map(Some)
+            .map_err(|e| DriverError::Query(e.to_string()))
     }
 
     // current_schema() es NULL si ningun schema del search_path existe; en

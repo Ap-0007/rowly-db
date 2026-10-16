@@ -38,6 +38,8 @@ pub(crate) struct ActiveConnection {
     pub(crate) tls: TlsStatus,
     pub(crate) default_schema: String,
     pub(crate) available_schemas: Vec<String>,
+    pub(crate) database: Option<String>,
+    pub(crate) available_databases: Vec<String>,
     /// Schemas currently shown in the explorer. Always includes
     /// `default_schema`; the others come and go via `set_visible_schemas`.
     pub(crate) schemas: BTreeMap<String, SchemaObjects>,
@@ -318,6 +320,8 @@ impl ActiveConnection {
             tls: self.tls.clone(),
             default_schema: self.default_schema.clone(),
             available_schemas: self.available_schemas.clone(),
+            database: self.database.clone(),
+            available_databases: self.available_databases.clone(),
             schemas,
         }
     }
@@ -330,6 +334,8 @@ pub(crate) struct DatabaseExplorer {
     tls: TlsStatus,
     default_schema: String,
     available_schemas: Vec<String>,
+    database: Option<String>,
+    available_databases: Vec<String>,
     schemas: Vec<SchemaObjects>,
 }
 
