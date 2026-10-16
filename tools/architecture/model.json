@@ -249,7 +249,8 @@
       "server-tests",
       "test-servers",
       "line-data",
-      "corpus"
+      "corpus",
+      "contract"
     ]
   },
   "debt": [],

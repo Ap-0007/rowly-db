@@ -96,7 +96,7 @@ flowchart TB
 | :--- | :--- |
 | Real-server harness (crates/server-tests) | Driver contract (khipu-driver-core); Engine core (khipu-engine); Matrix, evidence, packs, inventory (tools/); MySQL protocol driver (MySQL, MariaDB); PostgreSQL protocol driver; support/*.json (version lines); tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
 | Matrix, evidence, packs, inventory (tools/) | Frontend (Svelte); support/*.json (version lines); tests/engines/contract.json; tests/sql (corpus, coverage.json); tools/support/vendor-support.json (vendor dates); tools/test-dbs/lines.json (test servers, verified) |
-| CI (.github/workflows) | Matrix, evidence, packs, inventory (tools/); Real-server harness (crates/server-tests); tools/test-dbs/lines.json (test servers, verified) |
+| CI (.github/workflows) | Matrix, evidence, packs, inventory (tools/); Real-server harness (crates/server-tests); support/*.json (version lines); tests/engines/contract.json; tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
 <!-- /generated: infrastructure -->
 
 Rules the graph shows:
