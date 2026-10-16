@@ -79,6 +79,7 @@
 
   const canSwitchDatabase = $derived(!!ondatabasechange && !!explorer?.database && explorer.availableDatabases.length > 1);
 
+
   type IconComponent = typeof Table;
 
   // Menu del boton de carpeta, anclado debajo del boton.
@@ -465,7 +466,11 @@
           >
             {@render chevron(isConnectionOpen())}
             <Database size={14} class="node-icon icon-connection" aria-hidden="true" />
-            <span class="label strong">{connectionLabel}</span>
+            <!-- Con el selector de base, la pildora ya nombra la base y el host queda
+                 en el tooltip de la fila: el panel angosto no alcanza para los tres. -->
+            {#if !canSwitchDatabase}
+              <span class="label strong">{connectionLabel}</span>
+            {/if}
             {#if unencrypted}
               <span
                 class="warning"
