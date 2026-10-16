@@ -308,6 +308,8 @@ fn skeletons(engine: Engine, version: &[u32]) -> Vec<String> {
 /// Fuzz diferencial: rutinas validas mutadas (cargas insertadas entre
 /// palabras, palabras estructurales sueltas, borradas o duplicadas) corren en
 /// el servidor real; si el guard las acepto, la tabla victima sigue intacta.
+/// Cada semilla de ROWLY_FUZZ_SEEDS (`0,1,2` en la release) corre una tras
+/// otra contra la misma tabla, y cada una deja su evidencia.
 #[tokio::test]
 #[ignore = "requiere tools/test-dbs/up.sh"]
 async fn fuzzing_the_guard_against_the_real_servers_finds_no_second_statement() {
@@ -315,6 +317,16 @@ async fn fuzzing_the_guard_against_the_real_servers_finds_no_second_statement() 
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(4000);
+    let seeds: Vec<u64> = std::env::var("ROWLY_FUZZ_SEEDS")
+        .or_else(|_| std::env::var("ROWLY_FUZZ_SEED"))
+        .unwrap_or_else(|_| "0".to_string())
+        .split(',')
+        .map(|seed| {
+            seed.trim()
+                .parse()
+                .unwrap_or_else(|_| panic!("semilla de fuzz invalida: {seed:?}"))
+        })
+        .collect();
     let mut violations = Vec::new();
     let mut coverage = Vec::new();
     for engine in selected(Engine::ALL) {
@@ -325,37 +337,36 @@ async fn fuzzing_the_guard_against_the_real_servers_finds_no_second_statement() 
         } else {
             FRAGMENTS_PG
         };
-        let seed: u64 = std::env::var("ROWLY_FUZZ_SEED")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        let mut rng = Lcg(0x5eed_u64 ^ engine as u64 ^ seed.wrapping_mul(0x9e37_79b9));
-        let (mut accepted, mut dangerous, mut dangerous_and_valid) = (0usize, 0usize, 0usize);
-        for _ in 0..cases {
-            let base = &bases[rng.below(bases.len())];
-            let payload = PAYLOADS[rng.below(PAYLOADS.len())];
-            let text = mutate(&mut rng, base, fragments, payload);
-            let verdict = try_text(&conn, engine, &text).await;
-            accepted += verdict.accepted as usize;
-            dangerous += verdict.damaged as usize;
-            if verdict.damaged && !verdict.accepted {
-                dangerous_and_valid += 1;
+        for &seed in &seeds {
+            let mut rng = Lcg(0x5eed_u64 ^ engine as u64 ^ seed.wrapping_mul(0x9e37_79b9));
+            let (mut accepted, mut dangerous, mut dangerous_and_valid) = (0usize, 0usize, 0usize);
+            for _ in 0..cases {
+                let base = &bases[rng.below(bases.len())];
+                let payload = PAYLOADS[rng.below(PAYLOADS.len())];
+                let text = mutate(&mut rng, base, fragments, payload);
+                let verdict = try_text(&conn, engine, &text).await;
+                accepted += verdict.accepted as usize;
+                dangerous += verdict.damaged as usize;
+                if verdict.damaged && !verdict.accepted {
+                    dangerous_and_valid += 1;
+                }
+                if verdict.accepted && verdict.damaged {
+                    violations.push(format!(
+                        "{engine:?} (semilla {seed}): aceptado y ejecutado como mas de una sentencia:\n{text}"
+                    ));
+                }
+                if verdict.driver_damaged {
+                    violations.push(format!(
+                        "{engine:?} (semilla {seed}): el driver dejo pasar una segunda sentencia:\n{text}"
+                    ));
+                }
             }
-            if verdict.accepted && verdict.damaged {
-                violations.push(format!(
-                    "{engine:?}: aceptado y ejecutado como mas de una sentencia:\n{text}"
-                ));
-            }
-            if verdict.driver_damaged {
-                violations.push(format!(
-                    "{engine:?}: el driver dejo pasar una segunda sentencia:\n{text}"
-                ));
-            }
+            println!(
+                "{engine:?}: semilla {seed}, {cases} casos, {accepted} aceptados por el guard, {dangerous} peligrosos ({dangerous_and_valid} rechazados a tiempo)"
+            );
+            fuzz_evidence(engine, seed, cases, dangerous, accepted);
+            coverage.push((engine, seed, dangerous, accepted));
         }
-        println!(
-            "{engine:?}: {cases} casos, {accepted} aceptados por el guard, {dangerous} peligrosos ({dangerous_and_valid} rechazados a tiempo)"
-        );
-        coverage.push((engine, dangerous, accepted));
     }
     assert!(
         violations.is_empty(),
@@ -368,14 +379,14 @@ async fn fuzzing_the_guard_against_the_real_servers_finds_no_second_statement() 
             .collect::<Vec<_>>()
             .join("\n---\n")
     );
-    for (engine, dangerous, accepted) in coverage {
+    for (engine, seed, dangerous, accepted) in coverage {
         assert!(
             dangerous > 30,
-            "{engine:?}: el fuzz no genera suficientes casos peligrosos ({dangerous})"
+            "{engine:?} (semilla {seed}): el fuzz no genera suficientes casos peligrosos ({dangerous})"
         );
         assert!(
             accepted > 100,
-            "{engine:?}: el fuzz no genera suficientes casos aceptados ({accepted})"
+            "{engine:?} (semilla {seed}): el fuzz no genera suficientes casos aceptados ({accepted})"
         );
     }
 }

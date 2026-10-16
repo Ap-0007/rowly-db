@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { requiredVersions, verify } from "./evidence.mjs";
+import { RELEASE_SEEDS, requiredVersions, verify } from "./evidence.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname;
 const SHA = "a".repeat(40);
@@ -129,5 +129,57 @@ test("lo que README anuncia como verificado es exactamente lo que la release exi
       })
       .sort();
     assert.deepEqual(announced, required, doc);
+  }
+});
+
+// Un PR de un solo motor (#115): su reporte dice el alcance y no sirve para
+// la release, que pide todos los motores.
+test("alcance de PR: solo los motores elegidos, y la verificacion lo dice", (t) => {
+  const dir = evidence();
+  t.after(() => rmSync(dir, { recursive: true }));
+  rmSync(join(dir, "real-mysql-8.4.11"), { recursive: true });
+  rmSync(join(dir, "lines-mysql"), { recursive: true });
+  const scoped = check(dir, { engines: ["postgres"] });
+  assert.deepEqual(scoped.problems, []);
+  assert.deepEqual(scoped.verification.scope, ["postgres"]);
+  assert.deepEqual(scoped.verification.versions.map(({ engine }) => engine), ["postgres"]);
+  assert.match(scoped.summary, /Alcance del PR: postgres\..*no sirve para una release/);
+  // La misma evidencia parcial, sin alcance (lo que hace la release): rechazada.
+  const full = check(dir);
+  assert.equal(full.verification.scope, "full");
+  assert.deepEqual(full.problems.map((problem) => problem.split(":")[0]), ["mysql 8.4.11", "lineas mysql"]);
+});
+
+test("un alcance vacio o con un motor desconocido no se acepta", () => {
+  assert.throws(() => check("/nada", { engines: [] }), /motores invalidos: ninguno/);
+  assert.throws(() => check("/nada", { engines: ["oracle"] }), /motores invalidos: oracle/);
+});
+
+// La release exige las semillas documentadas (#118).
+test("release: sin cada semilla de fuzz con sus casos, rechazada", (t) => {
+  const dir = evidence();
+  t.after(() => rmSync(dir, { recursive: true }));
+  const fuzz = (engine, seed, cases = 4000) => JSON.stringify({ engine, fuzz: { seed, cases, dangerous: 40, accepted: 900 } });
+  const add = (job, engine, runs) => {
+    const path = join(dir, job, "evidence.jsonl");
+    writeFileSync(path, readFileSync(path, "utf8") + runs.map(([seed, cases]) => fuzz(engine, seed, cases)).join("\n") + "\n");
+  };
+  add("real-mysql-8.4.11", "MySql", [[0], [1], [2]]);
+  add("real-postgres-18.6", "Postgres", [[0], [1, 200]]);
+  const { problems, verification, summary } = check(dir, { seeds: RELEASE_SEEDS });
+  assert.deepEqual(problems, ["postgres 18.6: sin fuzz con la semilla 1 (4000 casos); sin fuzz con la semilla 2 (4000 casos)"]);
+  assert.deepEqual(verification.seeds, RELEASE_SEEDS);
+  assert.deepEqual(verification.versions[0].fuzz, [{ seed: 0, cases: 4000 }, { seed: 1, cases: 4000 }, { seed: 2, cases: 4000 }]);
+  assert.match(summary, /mysql 8\.4\.11 \| completa \(3\/3\); fuzz semilla 0 \(4000\), semilla 1 \(4000\), semilla 2 \(4000\)/);
+  // Fuera de la release, las semillas se informan pero no se exigen.
+  assert.deepEqual(check(dir).problems, []);
+});
+
+test("las semillas de la release son las que documenta SQL_ENGINE", () => {
+  for (const doc of ["SQL_ENGINE.md", "SQL_ENGINE.es.md"]) {
+    const text = readFileSync(join(ROOT, doc), "utf8");
+    const row = text.split("\n").find((line) => /^\| \*\*(App release|Release)\*\* \|/.test(line));
+    assert.ok(row, doc);
+    assert.match(row, new RegExp(`ROWLY_FUZZ_SEEDS=${RELEASE_SEEDS.join(",")}`), doc);
   }
 });
