@@ -5,6 +5,8 @@
 // completa y del commit que se prueba.
 //
 //   node tools/test-dbs/evidence.mjs <dir> [--commit <sha>] [--gate <nombre>=<resultado>]... [--out <verification.json>]
+//   node tools/test-dbs/evidence.mjs <dir> --engines postgres          (PR: solo esos motores)
+//   node tools/test-dbs/evidence.mjs <dir> --release ...               (release: todo y las semillas)
 //
 // <dir> tiene un directorio real-<motor>-<version> por job de version, con
 // origin.json (commit y corrida que la produjo), evidence.jsonl (lo que
@@ -17,6 +19,12 @@
 // Cada `--gate` (Quality, E2E) tiene que ser `success`. Lo que una version
 // no tiene sale como N/A, con su prueba. Con GITHUB_STEP_SUMMARY el resumen
 // va ahi; con --out, la verificacion que acompana a la release.
+//
+// Un PR que solo toca algunos motores corre la matriz de esos (--engines) y
+// su reporte dice el alcance: `scope` es la lista, no "full". La release
+// (--release) no acepta alcance: exige todos los motores y, en cada version,
+// el fuzz con cada semilla de RELEASE_SEEDS y al menos RELEASE_FUZZ_CASES
+// casos (SQL_ENGINE §7).
 
 import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,6 +36,9 @@ const ROOT = new URL("../..", import.meta.url).pathname;
 export const SUITES = ["safety", "analysis", "generated", "contract", "filters"];
 export const LINE_SUITES = ["version_lines"];
 const ENGINE = { mysql: "MySql", mariadb: "MariaDb", postgres: "Postgres" };
+// Las semillas del fuzz que exige la release (SQL_ENGINE §7).
+export const RELEASE_SEEDS = [0, 1, 2];
+export const RELEASE_FUZZ_CASES = 4000;
 
 // Cuantas pruebas tiene cada grupo de suites, contadas en su codigo.
 export function testCount(suites, root = ROOT) {
@@ -73,8 +84,23 @@ function suiteProblem(result, expected) {
   return null;
 }
 
-export function verify({ lines, dir, commit, gates = {}, expected = testCount(SUITES), expectedLines = testCount(LINE_SUITES) }) {
+export function verify({
+  lines,
+  dir,
+  commit,
+  gates = {},
+  expected = testCount(SUITES),
+  expectedLines = testCount(LINE_SUITES),
+  engines = null,
+  seeds = [],
+  minCases = RELEASE_FUZZ_CASES,
+}) {
   if (!/^[0-9a-f]{40}$/.test(commit ?? "")) throw new Error(`commit invalido: ${commit}`);
+  const known = Object.keys(lines.engines);
+  const unknown = (engines ?? []).filter((engine) => !known.includes(engine));
+  if (engines && (engines.length === 0 || unknown.length)) throw new Error(`motores invalidos: ${unknown.join(", ") || "ninguno"}`);
+  const scope = engines ? known.filter((engine) => engines.includes(engine)) : null;
+  const inScope = (engine) => !scope || scope.includes(engine);
   const problems = [];
   const rows = [];
   const na = [];
@@ -82,7 +108,7 @@ export function verify({ lines, dir, commit, gates = {}, expected = testCount(SU
   for (const [gate, result] of Object.entries(gates)) {
     if (result !== "success") problems.push(`${gate}: ${result || "sin resultado"}`);
   }
-  for (const server of requiredVersions(lines)) {
+  for (const server of requiredVersions(lines).filter(({ engine }) => inScope(engine))) {
     const { engine } = server;
     const name = `${engine} ${server.version}`;
     const job = join(dir, `real-${engine}-${server.version}`);
@@ -102,10 +128,15 @@ export function verify({ lines, dir, commit, gates = {}, expected = testCount(SU
     const result = results(read(join(job, "real.log")), SUITES.length);
     const suites = suiteProblem(result, expected);
     if (suites) missing.push(suites);
+    const fuzz = records.filter((record) => record.fuzz).map((record) => record.fuzz);
+    for (const seed of seeds) {
+      if (!fuzz.some((run) => run.seed === seed && run.cases >= minCases)) missing.push(`sin fuzz con la semilla ${seed} (${minCases} casos)`);
+    }
+    const fuzzText = fuzz.length ? `; fuzz ${fuzz.map((run) => `semilla ${run.seed} (${run.cases})`).join(", ")}` : "";
     for (const record of records.filter((record) => record.na)) {
       na.push(`| ${name} | ${record.row} | ${record.na} | ${record.since} | \`${record.proof}\` |`);
     }
-    rows.push(`| ${name} | ${missing.length ? "**incompleta**: " + missing.join("; ") : `completa (${expected}/${expected})`} |`);
+    rows.push(`| ${name} | ${missing.length ? "**incompleta**: " + missing.join("; ") : `completa (${expected}/${expected})${fuzzText}`} |`);
     if (missing.length) problems.push(`${name}: ${missing.join("; ")}`);
     versions.push({
       engine,
@@ -114,11 +145,12 @@ export function verify({ lines, dir, commit, gates = {}, expected = testCount(SU
       passed: result.passed ?? 0,
       expected,
       na: records.filter((record) => record.na).map(({ row, na: capability, since }) => ({ row, capability, since })),
+      fuzz: fuzz.map(({ seed, cases }) => ({ seed, cases })),
       run: from.found?.run ?? null,
     });
   }
   const lineResults = [];
-  for (const engine of Object.keys(lines.engines)) {
+  for (const engine of known.filter(inScope)) {
     const job = join(dir, `lines-${engine}`);
     const missing = [];
     const from = origin(job, commit);
@@ -134,6 +166,10 @@ export function verify({ lines, dir, commit, gates = {}, expected = testCount(SU
   const summary = [
     `## Evidencia por version exacta (commit ${commit})`,
     "",
+    scope
+      ? `**Alcance del PR: ${scope.join(", ")}.** Las demas versiones no se probaron en esta corrida; esta evidencia no sirve para una release.`
+      : `Alcance: todos los motores${seeds.length ? `, fuzz con las semillas ${seeds.join(", ")}` : ""}.`,
+    "",
     "| Version | Matriz |",
     "|---|---|",
     ...rows,
@@ -143,7 +179,17 @@ export function verify({ lines, dir, commit, gates = {}, expected = testCount(SU
     "",
   ].join("\n");
   // Lo verificado antes y ya fuera de soporte (lines.json `retired`), con su evidencia: viaja con cada release.
-  const verification = { format: 1, commit, date: new Date().toISOString(), gates, versions, lines: lineResults, retired: lines.retired ?? {} };
+  const verification = {
+    format: 1,
+    commit,
+    date: new Date().toISOString(),
+    scope: scope ?? "full",
+    seeds,
+    gates,
+    versions,
+    lines: lineResults,
+    retired: lines.retired ?? {},
+  };
   return { problems, summary, verification };
 }
 
@@ -154,13 +200,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     return i >= 0 ? args[i + 1] : undefined;
   };
   const dir = args[0];
-  if (!dir || dir.startsWith("--")) throw new Error("uso: evidence.mjs <dir> [--commit <sha>] [--gate nombre=resultado]... [--out <archivo>]");
+  if (!dir || dir.startsWith("--"))
+    throw new Error("uso: evidence.mjs <dir> [--commit <sha>] [--gate nombre=resultado]... [--engines a,b | --release] [--out <archivo>]");
+  const release = args.includes("--release");
+  const engines = option("--engines")?.split(",").filter(Boolean);
+  if (release && engines) throw new Error("la release no acepta --engines: exige todos los motores");
   const commit = option("--commit") ?? execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
   const gates = Object.fromEntries(
     args.flatMap((arg, i) => (args[i - 1] === "--gate" ? [arg.split("=")] : [])).map(([name, result]) => [name, result ?? ""]),
   );
   const lines = JSON.parse(readFileSync(join(ROOT, "tools/test-dbs/lines.json"), "utf8"));
-  const { problems, summary, verification } = verify({ lines, dir, commit, gates });
+  const { problems, summary, verification } = verify({ lines, dir, commit, gates, engines: engines ?? null, seeds: release ? RELEASE_SEEDS : [] });
   console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   if (problems.length) {

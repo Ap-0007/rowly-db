@@ -1,7 +1,7 @@
 # Paquete de Arch Linux de Rowly DB (rowly-db-bin): reempaqueta el .deb que
-# publica cada release. El workflow de release lo construye con makepkg, lo
-# firma y lo sube como .pkg.tar.zst, y deja este PKGBUILD con las sumas de
-# esa versión listo para publicarlo en AUR.
+# publica cada release. release-build.yml lo construye con makepkg desde el
+# .deb del build de Linux (el mismo archivo que se publica), lo firma, y deja
+# este PKGBUILD con las sumas de esa versión listo para publicarlo en AUR.
 
 pkgname=rowly-db-bin
 pkgver=0.1.0

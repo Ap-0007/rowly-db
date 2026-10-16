@@ -3,6 +3,7 @@
 //
 //   node tests/e2e/resources.mjs --app <binario>
 //   node tests/e2e/resources.mjs --app <binario> --measure <archivo.json>
+//   E2E_SCENARIOS=consoles,terminal-idle node tests/e2e/resources.mjs --app <binario> --report <archivo.json>
 //
 // Con --measure no corren los ciclos sino las mediciones de tecla a pintado
 // y de cuadros del grid (tools/bench/README.md), que no son compuerta.
@@ -385,9 +386,9 @@ const SERVERS = { [MYSQL_PROFILE.id]: "MySQL 8.4.11", [PG_PROFILE.id]: "PostgreS
 // --- Ciclos -----------------------------------------------------------------
 
 const cycles = [];
-const cycle = (name, body) => cycles.push({ name, body });
+const cycle = (id, name, body) => cycles.push({ id, name, body });
 
-cycle(`${RECONNECTIONS} reconexiones alternando MySQL y PostgreSQL: cada una con su servidor y su catalogo, sin crecer en memoria`, async (page, app) => {
+cycle("reconnections", `${RECONNECTIONS} reconexiones alternando MySQL y PostgreSQL: cada una con su servidor y su catalogo, sin crecer en memoria`, async (page, app) => {
   await seedProfiles(page, [MYSQL_PROFILE, PG_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   await backToConnections(page);
@@ -432,7 +433,7 @@ const consoles = `document.querySelectorAll(".cm-editor").length`;
 const gridText = `(document.querySelector('[role="grid"]')?.innerText ?? "")`;
 const settingsButton = `document.querySelector("button.icon-button[aria-expanded][aria-pressed]")`;
 
-cycle(`${CONSOLE_CYCLES} ciclos de consola: abrir, ejecutar, cambiar de tema y cerrar, sin dejar nada detras`, async (page, app) => {
+cycle("consoles", `${CONSOLE_CYCLES} ciclos de consola: abrir, ejecutar, cambiar de tema y cerrar, sin dejar nada detras`, async (page, app) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   const tabs = `document.querySelectorAll('[role="tab"]').length`;
@@ -469,7 +470,7 @@ cycle(`${CONSOLE_CYCLES} ciclos de consola: abrir, ejecutar, cambiar de tema y c
   assertStable(samples);
 });
 
-cycle(`${IDLE_SECONDS} s de reposo con una conexion abierta: sin trabajo, llamadas al backend ni memoria que crezca`, async (page, app) => {
+cycle("database-idle", `${IDLE_SECONDS} s de reposo con una conexion abierta: sin trabajo, llamadas al backend ni memoria que crezca`, async (page, app) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   await writeSql(page, "SELECT id, name FROM victim ORDER BY id");
@@ -585,7 +586,7 @@ async function closeConsoles(page) {
 
 const rect = (selector) => `(() => { const r = document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect(); return r ? [r.top, r.bottom, r.left, r.right].map(Math.round) : null; })()`;
 
-cycle("pestaña Terminal en el panel inferior: mismo lugar que el grid, sin consola, al cambiar de consola, con Ctrl+T y con varias sesiones", async (page) => {
+cycle("terminal-ui", "pestaña Terminal en el panel inferior: mismo lugar que el grid, sin consola, al cambiar de consola, con Ctrl+T y con varias sesiones", async (page) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   const separators = await page.evaluate(`document.querySelectorAll('[role="separator"][aria-orientation="horizontal"]').length`);
@@ -648,7 +649,7 @@ cycle("pestaña Terminal en el panel inferior: mismo lugar que el grid, sin cons
   console.log(`        sin consola, cambio de consola, Ctrl+T ida y vuelta, + y x por sesion; panel ${region}, terminal ${view}`);
 });
 
-cycle(`${TERMINAL_CYCLES} ciclos de sesion: abrir con + y cerrar con x, sin procesos ni memoria detras`, async (page, app) => {
+cycle("terminal-cycles", `${TERMINAL_CYCLES} ciclos de sesion: abrir con + y cerrar con x, sin procesos ni memoria detras`, async (page, app) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   await openTerminal(page);
@@ -674,7 +675,7 @@ cycle(`${TERMINAL_CYCLES} ciclos de sesion: abrir con + y cerrar con x, sin proc
 
 // 1, 5 y 10 sesiones en reposo (la primera, IDLE_SECONDS; las demas, 60 s),
 // la terminal oculta y, al cerrarlas, el backend con los hilos de antes.
-cycle(`1, 5 y 10 sesiones de terminal en reposo, ocultas y cerradas: sin trabajo ni llamadas al backend, memoria por sesion acotada`, async (page, app) => {
+cycle("terminal-idle", `1, 5 y 10 sesiones de terminal en reposo, ocultas y cerradas: sin trabajo ni llamadas al backend, memoria por sesion acotada`, async (page, app) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   const baseThreads = threads(app.pid);
@@ -712,7 +713,7 @@ cycle(`1, 5 y 10 sesiones de terminal en reposo, ocultas y cerradas: sin trabajo
 // P4: salida grande. Durante la rafaga la pagina sigue respondiendo (se mide
 // el retraso del bucle de eventos con un timer propio de la prueba) y, con
 // un productor sin fin (yes), la memoria no crece sin limite.
-cycle("salida grande en la terminal: 50 MB y yes durante 30 s, con la interfaz respondiendo y la memoria acotada", async (page, app) => {
+cycle("terminal-output", "salida grande en la terminal: 50 MB y yes durante 30 s, con la interfaz respondiendo y la memoria acotada", async (page, app) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   await openTerminal(page);
@@ -815,7 +816,7 @@ const MEASURE = option("--measure");
 const KEYSTROKES = Number(process.env.E2E_KEYSTROKES ?? 200);
 const SCROLL_FRAMES = Number(process.env.E2E_SCROLL_FRAMES ?? 300);
 const measures = [];
-const measure = (name, body) => measures.push({ name, body });
+const measure = (id, name, body) => measures.push({ id, name, body });
 const measured = {};
 
 function percentiles(values) {
@@ -891,14 +892,14 @@ async function keyToPaint(page, lines) {
   return percentiles(times);
 }
 
-measure("tecla -> pintado con 20 y con 10 000 lineas", async (page) => {
+measure("key-to-paint", "tecla -> pintado con 20 y con 10 000 lineas", async (page) => {
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
   measured.keyToPaintMs = { lines20: await keyToPaint(page, 20), lines10000: await keyToPaint(page, 10_000) };
   console.log(`      tecla -> pintado (ms): ${JSON.stringify(measured.keyToPaintMs)}`);
 });
 
-measure("cuadros del grid con 2000 x 120 al desplazarse", async (page) => {
+measure("grid-frames", "cuadros del grid con 2000 x 120 al desplazarse", async (page) => {
   await page.evaluate(`localStorage.setItem("khipu:result-page-size:v1", "2000"), true`);
   await seedProfiles(page, [MYSQL_PROFILE]);
   await open(page, MYSQL_PROFILE, SERVERS[MYSQL_PROFILE.id], "rowly");
@@ -946,11 +947,22 @@ measure("cuadros del grid con 2000 x 120 al desplazarse", async (page) => {
   console.log(`      cuadros del grid (ms): ${JSON.stringify(measured.gridFrameMs)}`);
 });
 
-const only = process.env.E2E_ONLY;
+// E2E_SCENARIOS=<id>,<id>: solo esos escenarios (CI corre uno por job). Una
+// seleccion vacia o con un id que no existe es un error, no un exito sin
+// nada que medir. Con --report <archivo>, el resultado de cada uno en JSON.
+const available = MEASURE ? measures : cycles;
+const requested = process.env.E2E_SCENARIOS?.split(",").map((id) => id.trim());
+if (requested) {
+  const unknown = requested.filter((id) => !available.some((candidate) => candidate.id === id));
+  if (requested.includes("") || unknown.length)
+    throw new Error(`E2E_SCENARIOS invalido (${unknown.join(", ") || "vacio"}); hay: ${available.map(({ id }) => id).join(", ")}`);
+}
+const selected = requested ? available.filter(({ id }) => requested.includes(id)) : available;
+const REPORT = option("--report");
+const report = [];
 let failures = 0;
 let port = 9333;
-const selected = MEASURE ? measures : cycles;
-for (const { name, body } of selected.filter((candidate) => !only || candidate.name.includes(only))) {
+for (const { id, name, body } of selected) {
   port += 1;
   sql(
     "DROP DATABASE IF EXISTS rowly_e2e; CREATE DATABASE rowly_e2e; " +
@@ -970,8 +982,10 @@ for (const { name, body } of selected.filter((candidate) => !only || candidate.n
     }));
     await body(page, app);
     console.log(`ok    ${name} (${Date.now() - started} ms)`);
+    report.push({ id, ok: true, ms: Date.now() - started });
   } catch (error) {
     failures += 1;
+    report.push({ id, ok: false, ms: Date.now() - started, error: error.message });
     console.log(`FALLO ${name}\n      ${error.message}`);
     const screen = await page?.evaluate("document.body.innerText.slice(0, 600)").catch(() => "");
     console.log(`      pantalla: ${String(screen ?? "").replace(/\s+/g, " ")}`);
@@ -982,6 +996,7 @@ for (const { name, body } of selected.filter((candidate) => !only || candidate.n
     rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
+if (REPORT) writeFileSync(REPORT, JSON.stringify({ scenarios: report }, null, 2) + "\n");
 if (MEASURE && failures === 0) {
   writeFileSync(
     MEASURE,

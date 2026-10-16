@@ -483,6 +483,14 @@ fn evidence(engine: Engine, declared: &Declared) {
     ));
 }
 
+/// Una corrida del fuzz del guard: semilla y casos, para que la release
+/// compruebe que corrieron las semillas que exige (SQL_ENGINE §7).
+pub fn fuzz_evidence(engine: Engine, seed: u64, cases: usize, dangerous: usize, accepted: usize) {
+    record(format!(
+        "{{\"engine\":\"{engine:?}\",\"fuzz\":{{\"seed\":{seed},\"cases\":{cases},\"dangerous\":{dangerous},\"accepted\":{accepted}}}}}"
+    ));
+}
+
 /// Una linea de evidencia, una vez por corrida. Con ROWLY_EVIDENCE=<archivo>
 /// tambien se agrega ahi.
 fn record(line: String) {
@@ -719,7 +727,7 @@ mod tests {
     use super::*;
 
     /// tools/test-dbs/lines.json es la fuente unica de servidores de prueba:
-    /// el E2E y los servidores por defecto de up.sh son versiones
+    /// el E2E, los recursos y los servidores por defecto de up.sh son versiones
     /// verificadas, fijadas por el mismo digest.
     #[test]
     fn the_e2e_and_default_servers_are_verified_releases_of_lines_json() {
@@ -741,13 +749,19 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for file in [
             ".github/workflows/e2e.yml",
+            ".github/workflows/resources.yml",
             "tools/test-dbs/docker-compose.yml",
         ] {
             let text = std::fs::read_to_string(root.join(file)).unwrap();
-            // `image: X` o, en el compose, `image: ${VARIABLE:-X}`.
+            // `image: X`, en el compose `image: ${VARIABLE:-X}`, y en un
+            // workflow que levanta los servidores a mano `MYSQL_IMAGE: X`.
             let images: Vec<&str> = text
                 .lines()
-                .filter_map(|line| line.trim().strip_prefix("image:"))
+                .filter_map(|line| {
+                    let line = line.trim();
+                    line.strip_prefix("image:")
+                        .or_else(|| line.split_once("_IMAGE:").map(|(_, image)| image))
+                })
                 .map(|image| {
                     let image = image.trim();
                     image

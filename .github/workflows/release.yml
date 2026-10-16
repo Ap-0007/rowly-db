@@ -5,11 +5,14 @@ name: Release
 # usa Ajustes > Actualizaciones. Las releases no se borran: son el historial
 # al que la app deja volver.
 #
-# Nada se publica sin las compuertas del mismo commit: Quality, E2E y la
-# compuerta de motor (matriz de cada versión verificada y D7/D8) corren en
-# esta misma corrida sobre el commit del tag, y `verify` comprueba que toda la
-# evidencia sea de ese commit (tools/test-dbs/evidence.mjs). La verificación
-# (verification.json, con el commit) se publica junto a los instaladores.
+# Nada se publica sin las compuertas del mismo commit, todas completas (sin
+# el planner de ci.yml): Rust, Node, E2E, recursos y la compuerta de motor
+# (matriz de cada versión verificada con las semillas de la release y D7/D8)
+# corren en esta misma corrida sobre el commit del tag, y `verify` comprueba
+# que toda la evidencia sea de ese commit y completa
+# (tools/test-dbs/evidence.mjs --release). Los instaladores se compilan en
+# paralelo con las compuertas (release-build.yml) y un solo job publica todo
+# cuando las dos cosas terminaron bien.
 
 on:
   push:
@@ -18,6 +21,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   version:
@@ -32,23 +39,48 @@ jobs:
             exit 1
           fi
 
-  quality:
+  rust:
     needs: version
-    uses: ./.github/workflows/quality.yml
+    uses: ./.github/workflows/rust.yml
+
+  node:
+    needs: version
+    uses: ./.github/workflows/node.yml
+
+  app:
+    needs: version
+    uses: ./.github/workflows/app-build.yml
 
   e2e:
-    needs: version
+    needs: app
     uses: ./.github/workflows/e2e.yml
+
+  resources:
+    needs: app
+    uses: ./.github/workflows/resources.yml
 
   sql:
     needs: version
     uses: ./.github/workflows/sql-engine.yml
     with:
       fuzz_cases: "4000"
+      # Las semillas que exige la release (SQL_ENGINE §7, evidence.mjs RELEASE_SEEDS).
+      fuzz_seeds: "0,1,2"
+
+  build:
+    needs: version
+    uses: ./.github/workflows/release-build.yml
+    with:
+      tag: ${{ github.ref_name }}
+      dry-run: false
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
   verify:
     name: Evidencia del commit ${{ github.sha }}
-    needs: [quality, e2e, sql]
+    needs: [rust, node, e2e, resources, sql]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,11 +96,13 @@ jobs:
         with:
           pattern: lines-*
           path: evidence
-      - name: Toda la evidencia es de este commit y las compuertas pasaron
+      - name: Toda la evidencia es de este commit, completa, y las compuertas pasaron
         run: >-
-          node tools/test-dbs/evidence.mjs evidence --commit "$GITHUB_SHA"
-          --gate quality=${{ needs.quality.result }}
+          node tools/test-dbs/evidence.mjs evidence --release --commit "$GITHUB_SHA"
+          --gate rust=${{ needs.rust.result }}
+          --gate node=${{ needs.node.result }}
           --gate e2e=${{ needs.e2e.result }}
+          --gate resources=${{ needs.resources.result }}
           --gate sql=${{ needs.sql.result }}
           --out verification.json
       - uses: actions/upload-artifact@v4
@@ -76,130 +110,48 @@ jobs:
           name: release-verification
           path: verification.json
 
-  release:
-    needs: verify
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
-          # Ubuntu 22.04 (glibc 2.35): el binario corre también en Debian 12,
-          # Fedora y Arch, que traen una glibc igual o más nueva.
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: windows-latest
-            args: ""
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential curl wget file libssl-dev libgtk-3-dev rpm
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.90
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: app
-        run: npm ci
-
-      - name: Build and publish release assets
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          projectPath: app
-          tagName: ${{ github.ref_name }}
-          releaseName: "Rowly DB ${{ github.ref_name }}"
-          releaseBody: "Commit ${{ github.sha }}. Verificación de este commit (Quality, E2E, matriz SQL y D7/D8): verification.json."
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          includeUpdaterJson: true
-          # Firmas de actualización solo aquí: compilar el repo no necesita la clave.
-          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
-
-  # La verificacion del commit, junto a los instaladores que salieron de el.
-  verification:
-    needs: release
+  # El unico job que escribe en la release: borrador con todo, y se publica
+  # al final. Un build o una compuerta que fallo no llega aqui.
+  publish:
+    name: Publicar ${{ github.ref_name }}
+    needs: [verify, build]
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-verification
-      - run: gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber verification.json
-      - name: Novedades de esta version para el aviso de actualizacion
-        run: |
-          highlight="docs/release/${GITHUB_REF_NAME}.json"
-          if [ -f "$highlight" ]; then
-            cp "$highlight" highlight.json
-            gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber highlight.json
-          fi
-
-  arch:
-    needs: release
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ github.ref_name }}
     steps:
-      - name: Herramientas
-        run: pacman -Syu --noconfirm --needed git github-cli nodejs npm python pacman-contrib
-
       - uses: actions/checkout@v4
-
-      - name: Construir el paquete de pacman desde el .deb del release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-manifest
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-verification
+          path: dist
+      - name: Novedades de esta version para el aviso de actualizacion
         run: |
-          version="${TAG#v}"
-          useradd --create-home builder
-          install -d -o builder /home/builder/pkg
-          sed -e "s/^pkgver=.*/pkgver=${version//-/_}/" \
-              -e "s#/v\${pkgver}/#/${TAG}/#g" \
-              -e "s#_\${pkgver}_#_${version}_#g" \
-              packaging/arch/PKGBUILD > /home/builder/pkg/PKGBUILD
-          chown builder /home/builder/pkg/PKGBUILD
-          cd /home/builder/pkg
-          su builder -c "updpkgsums && makepkg --noconfirm --nodeps"
-          cp ./*.pkg.tar.zst "${GITHUB_WORKSPACE}/rowly-db_${version}_x86_64.pkg.tar.zst"
-          cp PKGBUILD "${GITHUB_WORKSPACE}/rowly-db-bin.PKGBUILD"
-
-      - name: Firmar y sumarlo a latest.json
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          highlight="docs/release/${TAG}.json"
+          if [ -f "$highlight" ]; then cp "$highlight" dist/highlight.json; fi
+      - name: Todas las plataformas, firmadas, en latest.json
         run: |
-          version="${TAG#v}"
-          package="rowly-db_${version}_x86_64.pkg.tar.zst"
-          npx --yes @tauri-apps/cli@2 signer sign "${package}"
-          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --pattern latest.json --clobber
-          python3 packaging/arch/add-to-manifest.py latest.json "${package}" "${package}.sig" \
-            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${package}"
-          gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
-            "${package}" "${package}.sig" latest.json rowly-db-bin.PKGBUILD
+          jq -e --arg version "${TAG#v}" '.version == $version and (.platforms | length) == 12' dist/latest.json
+          ls -l dist
+      - name: Publicar
+        run: |
+          # El actualizador lee releases/latest: una estable lo es de forma
+          # explicita, una preliminar nunca.
+          prerelease=() latest=(--latest)
+          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease) latest=(--latest=false); fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft "${prerelease[@]}" \
+            --title "Rowly DB $TAG" \
+            --notes "Commit $GITHUB_SHA. Verificación de este commit (Quality, E2E, matriz SQL y D7/D8): verification.json." \
+            dist/*
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${latest[@]}"

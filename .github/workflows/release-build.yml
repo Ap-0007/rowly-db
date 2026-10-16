@@ -1,0 +1,264 @@
+name: Release build
+
+# Los instaladores de cada sistema, compilados en paralelo y sin publicar
+# nada: cada build sube sus archivos y firmas como artefacto, el paquete de
+# Arch sale del .deb de Linux, y un ultimo job arma latest.json una sola vez
+# (tools/release/manifest.mjs). Publicar es cosa de release.yml.
+#
+# Antes cada build publicaba con tauri-action y leia, mezclaba y volvia a
+# subir latest.json; por eso corrian de a uno (max-parallel: 1), y el job de
+# Arch lo reescribia despues.
+#
+# En `dry-run` (ci.yml, cuando cambia lo que empaqueta la release o en un push
+# a main) firma con una clave efimera: compila y empaqueta igual, pero esas
+# firmas no valen para la app instalada. Sin `dry-run`, falta la clave real =
+# fallo.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+      tag:
+        description: "Tag de la release (vacio: v + la version de tauri.conf.json)"
+        type: string
+        default: ""
+      dry-run:
+        type: boolean
+        default: true
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-aarch64
+            platform: macos-latest
+            target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+            bundle: target/aarch64-apple-darwin/release/bundle
+            arch: aarch64
+          - name: macos-x86_64
+            platform: macos-latest
+            target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+            bundle: target/x86_64-apple-darwin/release/bundle
+            arch: x64
+          # Ubuntu 22.04 (glibc 2.35): el binario corre tambien en Debian 12,
+          # Fedora y Arch, que traen una glibc igual o mas nueva.
+          - name: linux-x86_64
+            platform: ubuntu-22.04
+            target: ""
+            args: ""
+            bundle: target/release/bundle
+            arch: amd64
+          - name: windows-x86_64
+            platform: windows-latest
+            target: ""
+            args: ""
+            bundle: target/release/bundle
+            arch: x64
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential curl wget file libssl-dev libgtk-3-dev rpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.90
+        with:
+          targets: ${{ matrix.target }}
+
+      # Un tag solo lee caches de su ref y de la rama por defecto (main): la
+      # guarda el build de prueba de cada push a main, justo antes del tag.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.name }}
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Clave de firma
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        working-directory: app
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            npx tauri signer generate --ci -p "" -w "$RUNNER_TEMP/dry-run.key" > /dev/null
+            KEY=$(cat "$RUNNER_TEMP/dry-run.key")
+            PASSWORD=""
+          elif [ -z "$KEY" ]; then
+            echo "sin TAURI_SIGNING_PRIVATE_KEY: una release no se firma con otra clave" >&2
+            exit 1
+          fi
+          echo "::add-mask::$KEY"
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY=$KEY"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      # Firmas de actualizacion solo aqui: compilar el repo no necesita la clave.
+      - name: Compilar e instaladores
+        working-directory: app
+        run: npx tauri build ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+
+      # Los nombres con los que GitHub los publica (los espacios pasan a
+      # puntos) y, en macOS, la arquitectura en el .app.tar.gz, como hacia
+      # tauri-action.
+      - name: Reunir los archivos
+        env:
+          BUNDLE: ${{ matrix.bundle }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist
+          for file in "$BUNDLE"/*/*; do
+            [ -f "$file" ] || continue
+            name=$(basename "$file")
+            case "$name" in
+              *.app.tar.gz | *.app.tar.gz.sig) name="Rowly DB_${ARCH}.app.tar.gz${name#*.app.tar.gz}" ;;
+              *.dmg | *.AppImage | *.AppImage.sig | *.deb | *.deb.sig | *.rpm | *.rpm.sig | *.msi | *.msi.sig | *-setup.exe | *-setup.exe.sig) ;;
+              *) continue ;;
+            esac
+            cp "$file" "dist/${name// /.}"
+          done
+          ls -l dist
+          test -n "$(ls dist)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.name }}
+          path: dist/*
+          retention-days: 3
+
+  # El paquete de pacman reempaqueta el .deb de este mismo build: makepkg usa
+  # el archivo ya presente en vez de bajarlo de la release (que todavia no
+  # existe), y el PKGBUILD queda con las sumas de ese .deb y la URL de la
+  # release, listo para AUR.
+  arch:
+    name: Build arch
+    needs: build
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Herramientas
+        run: pacman -Syu --noconfirm --needed git nodejs npm python pacman-contrib jq
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-linux-x86_64
+          path: linux
+
+      - name: Version
+        id: version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          tag=${TAG:-v$(jq -r .version app/src-tauri/tauri.conf.json)}
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Construir el paquete de pacman desde el .deb del build
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          useradd --create-home builder
+          install -d -o builder /home/builder/pkg
+          sed -e "s/^pkgver=.*/pkgver=${VERSION//-/_}/" \
+              -e "s#/v\${pkgver}/#/${TAG}/#g" \
+              -e "s#_\${pkgver}_#_${VERSION}_#g" \
+              packaging/arch/PKGBUILD > /home/builder/pkg/PKGBUILD
+          cp "linux/Rowly.DB_${VERSION}_amd64.deb" LICENSE-MIT LICENSE-APACHE /home/builder/pkg/
+          chown -R builder /home/builder/pkg
+          cd /home/builder/pkg
+          su builder -c "updpkgsums && makepkg --noconfirm --nodeps"
+          mkdir -p "${GITHUB_WORKSPACE}/dist"
+          cp ./*.pkg.tar.zst "${GITHUB_WORKSPACE}/dist/rowly-db_${VERSION}_x86_64.pkg.tar.zst"
+          cp PKGBUILD "${GITHUB_WORKSPACE}/dist/rowly-db-bin.PKGBUILD"
+
+      - name: Firmar
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            npx --yes @tauri-apps/cli@2 signer generate --ci -p "" -w "$RUNNER_TEMP/dry-run.key" > /dev/null
+            KEY=$(cat "$RUNNER_TEMP/dry-run.key")
+            PASSWORD=""
+          elif [ -z "$KEY" ]; then
+            echo "sin TAURI_SIGNING_PRIVATE_KEY: una release no se firma con otra clave" >&2
+            exit 1
+          fi
+          TAURI_SIGNING_PRIVATE_KEY="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$PASSWORD" \
+            npx --yes @tauri-apps/cli@2 signer sign "dist/rowly-db_${VERSION}_x86_64.pkg.tar.zst"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-arch
+          path: dist/*
+          retention-days: 3
+
+  manifest:
+    name: latest.json
+    needs: [build, arch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          path: dist
+          merge-multiple: true
+      - name: Armar y comprobar latest.json
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          ls -l dist
+          tag=${TAG:-v$(jq -r .version app/src-tauri/tauri.conf.json)}
+          node tools/release/manifest.mjs dist --tag "$tag" --repo "$GITHUB_REPOSITORY" --out latest.json \
+            --notes "Commit $(git rev-parse HEAD). Verificación de este commit (Quality, E2E, matriz SQL y D7/D8): verification.json."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: latest.json
+          retention-days: 3

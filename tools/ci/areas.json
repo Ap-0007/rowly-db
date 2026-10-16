@@ -1,0 +1,447 @@
+{
+  "about": "Que valida CI segun lo que cambia. tools/ci/select.mjs lee este mapa; ver tools/ci/README.md.",
+  "fullOn": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "app/package.json",
+    "app/package-lock.json",
+    "app/vite.config.js",
+    "app/vitest.config.ts",
+    "app/svelte.config.js",
+    "app/tsconfig.json",
+    ".github/workflows/**",
+    "tools/ci/**"
+  ],
+  "resources": [
+    "reconnections",
+    "consoles",
+    "database-idle",
+    "terminal-ui",
+    "terminal-cycles",
+    "terminal-idle",
+    "terminal-output"
+  ],
+  "vitest": {
+    "selection": "shadow",
+    "always": [
+      "src/lib/backend.test.ts",
+      "src/lib/engines/contract.test.ts",
+      "src/lib/i18n/backendKeys.test.ts"
+    ],
+    "fullOn": [
+      "app/src/lib/__test-stubs__/**",
+      "app/src/app.d.ts"
+    ]
+  },
+  "areas": [
+    {
+      "id": "docs",
+      "paths": [
+        "*.md",
+        "docs/**",
+        "LICENSE*",
+        ".gitignore",
+        ".claude/**",
+        "graphify-out/**",
+        "tools/bench/**",
+        "tools/site-shots/**",
+        "tools/engine/**",
+        "tools/support/publish.mjs",
+        "tools/support/vendor-support.py",
+        "tools/test-dbs/README*.md",
+        "app/README.md",
+        "app/.gitignore",
+        "app/.vscode/**",
+        "app/src-tauri/.gitignore"
+      ],
+      "exclude": [
+        "docs/release/highlight.example.json"
+      ],
+      "checks": {}
+    },
+    {
+      "id": "repo-tools",
+      "paths": [
+        "tools/inventory/**",
+        "tools/architecture/**",
+        "tests/inventory.json"
+      ],
+      "checks": {}
+    },
+    {
+      "id": "site",
+      "paths": [
+        "site/**",
+        ".github/scripts/render-site.py",
+        ".github/scripts/check-site.py",
+        "README.md"
+      ],
+      "checks": {
+        "site": true
+      }
+    },
+    {
+      "id": "release",
+      "paths": [
+        ".github/workflows/release.yml",
+        ".github/workflows/release-build.yml",
+        "packaging/**",
+        "tools/release/**",
+        "app/src-tauri/tauri.release.conf.json",
+        "app/src-tauri/icons/**",
+        "app/src-tauri/tauri.conf.json"
+      ],
+      "checks": {
+        "release": true
+      }
+    },
+    {
+      "id": "frontend",
+      "paths": [
+        "app/src/**",
+        "app/static/**"
+      ],
+      "exclude": [
+        "app/src/**/*.test.ts",
+        "app/src/lib/__test-stubs__/**"
+      ],
+      "checks": {
+        "node": true,
+        "e2e": true
+      }
+    },
+    {
+      "id": "frontend-in-desktop-tests",
+      "about": "lib.rs compara los invoke(...) del frontend con los comandos del backend.",
+      "paths": [
+        "app/src/**/*.ts",
+        "app/src/**/*.svelte"
+      ],
+      "exclude": [
+        "app/src/**/*.test.ts",
+        "app/src/lib/__test-stubs__/**"
+      ],
+      "checks": {
+        "rust": [
+          "khipu-desktop"
+        ]
+      }
+    },
+    {
+      "id": "vitest-files",
+      "paths": [
+        "app/src/**/*.test.ts",
+        "app/src/lib/__test-stubs__/**"
+      ],
+      "checks": {
+        "node": true
+      }
+    },
+    {
+      "id": "app-crates",
+      "about": "Lo que la app compila dentro del binario.",
+      "paths": [
+        "crates/engine/**",
+        "crates/driver-core/**",
+        "crates/drivers/**",
+        "support/**",
+        "tools/test-dbs/lines.json",
+        "tools/support/vendor-support.json"
+      ],
+      "exclude": [
+        "crates/*/tests/**",
+        "crates/drivers/*/tests/**"
+      ],
+      "checks": {
+        "e2e": true
+      }
+    },
+    {
+      "id": "desktop",
+      "paths": [
+        "app/src-tauri/**"
+      ],
+      "checks": {
+        "node": true,
+        "e2e": true
+      }
+    },
+    {
+      "id": "desktop-inputs",
+      "paths": [
+        "docs/release/highlight.example.json",
+        "tools/support/vendor-support.json",
+        "tests/support/**"
+      ],
+      "checks": {
+        "rust": [
+          "khipu-desktop"
+        ],
+        "node": true
+      }
+    },
+    {
+      "id": "e2e-walks",
+      "paths": [
+        "app/tests/e2e/run.mjs",
+        "app/tests/e2e/webdriver.mjs"
+      ],
+      "checks": {
+        "e2e": true
+      }
+    },
+    {
+      "id": "resources-harness",
+      "paths": [
+        "app/tests/e2e/resources.mjs",
+        "app/tests/e2e/inspector.mjs",
+        "app/src-tauri/src/lib.rs",
+        "app/src-tauri/src/main.rs",
+        "app/src-tauri/src/state.rs",
+        "app/src-tauri/src/webkit_env.rs",
+        "app/src-tauri/src/desktop_portal.rs",
+        "app/src-tauri/tauri.conf.json",
+        "app/src-tauri/capabilities/**",
+        "app/src-tauri/Cargo.toml",
+        "app/src/routes/**",
+        "app/src/app.html"
+      ],
+      "checks": {
+        "resources": "*"
+      }
+    },
+    {
+      "id": "terminal",
+      "paths": [
+        "app/src-tauri/src/terminal.rs",
+        "app/src/lib/terminal.ts",
+        "app/src/lib/components/Terminal*.svelte",
+        "app/src/lib/sessionMount.ts",
+        "app/src-tauri/Cargo.toml"
+      ],
+      "checks": {
+        "terminal": true,
+        "resources": [
+          "terminal-ui",
+          "terminal-cycles",
+          "terminal-idle",
+          "terminal-output"
+        ]
+      }
+    },
+    {
+      "id": "connections",
+      "paths": [
+        "app/src-tauri/src/commands/connection.rs",
+        "app/src-tauri/src/commands/catalog.rs",
+        "app/src-tauri/src/services/catalog.rs",
+        "app/src-tauri/src/drivers.rs",
+        "app/src-tauri/src/engine_context.rs",
+        "app/src-tauri/src/credentials.rs",
+        "crates/driver-core/**",
+        "crates/drivers/**",
+        "app/src/lib/connections/**",
+        "app/src/lib/connections.ts",
+        "app/src/lib/stores/connection*.ts",
+        "app/src/lib/components/Connection*.svelte",
+        "app/src/lib/components/SchemaTree.svelte"
+      ],
+      "checks": {
+        "resources": [
+          "reconnections",
+          "database-idle"
+        ]
+      }
+    },
+    {
+      "id": "consoles",
+      "paths": [
+        "app/src/lib/SqlEditor.svelte",
+        "app/src/lib/editor/**",
+        "app/src/lib/editorSearch/**",
+        "app/src/lib/workspace/**",
+        "app/src/lib/components/Workspace.svelte",
+        "app/src/lib/components/MosaicArea.svelte",
+        "app/src/lib/components/SettingsPanel.svelte",
+        "app/src/lib/stores/queryConsoles.ts",
+        "app/src/lib/stores/consoleMosaic.ts",
+        "app/src/lib/stores/editorSettings.ts",
+        "app/src/lib/styles/**",
+        "app/src/lib/sessionMount.ts",
+        "app/src/lib/queryExecution.ts",
+        "app/src/lib/components/results/**",
+        "app/src/lib/results/**",
+        "app/src/lib/stores/result*.ts",
+        "app/src-tauri/src/commands/query.rs",
+        "app/src-tauri/src/commands/results.rs"
+      ],
+      "checks": {
+        "resources": [
+          "consoles"
+        ]
+      }
+    },
+    {
+      "id": "engine-postgres",
+      "paths": [
+        "crates/drivers/postgres/**",
+        "crates/engine/src/dialects/postgres.rs",
+        "support/postgres.json",
+        "app/src/lib/engines/postgres.ts",
+        "tests/sql/postgres/**"
+      ],
+      "checks": {
+        "sql": [
+          "postgres"
+        ]
+      }
+    },
+    {
+      "id": "engine-mysql",
+      "about": "MariaDB reutiliza el driver, el dialecto de Rust y el perfil del frontend de MySQL.",
+      "paths": [
+        "crates/drivers/mysql/**",
+        "crates/engine/src/dialects/mysql.rs",
+        "support/mysql.json",
+        "app/src/lib/engines/mysql.ts",
+        "tests/sql/mysql/**"
+      ],
+      "checks": {
+        "sql": [
+          "mysql",
+          "mariadb"
+        ]
+      }
+    },
+    {
+      "id": "engine-mariadb",
+      "paths": [
+        "crates/engine/src/dialects/mariadb.rs",
+        "support/mariadb.json",
+        "app/src/lib/engines/mariadb.ts",
+        "tests/sql/mariadb/**"
+      ],
+      "checks": {
+        "sql": [
+          "mariadb"
+        ]
+      }
+    },
+    {
+      "id": "engine-shared",
+      "about": "Splitter, guard, analisis, generacion, contrato de drivers y arnes: todos los motores.",
+      "paths": [
+        "crates/engine/**",
+        "crates/driver-core/**",
+        "crates/server-tests/**",
+        "tests/sql/**",
+        "tests/engines/**",
+        "tools/test-dbs/**",
+        "app/src/lib/engines/**",
+        "app/src/lib/editor/catalogCompletions.ts",
+        "app/src/lib/editor/catalogCompletions.server.test.ts",
+        "app/src/lib/editor/callHints.ts",
+        "app/src/lib/editor/relations.ts",
+        "app/src/lib/sql*.ts",
+        "app/src/lib/types.ts"
+      ],
+      "exclude": [
+        "crates/engine/src/dialects/postgres.rs",
+        "crates/engine/src/dialects/mysql.rs",
+        "crates/engine/src/dialects/mariadb.rs",
+        "tests/sql/postgres/**",
+        "tests/sql/mysql/**",
+        "tests/sql/mariadb/**",
+        "app/src/lib/engines/postgres.ts",
+        "app/src/lib/engines/mysql.ts",
+        "app/src/lib/engines/mariadb.ts",
+        "app/src/lib/**/*.test.ts",
+        "tools/test-dbs/README*.md"
+      ],
+      "checks": {
+        "sql": "*"
+      }
+    },
+    {
+      "id": "engine-rust-inputs",
+      "about": "Lo que los tests de Rust leen fuera de su paquete y Cargo no ve.",
+      "paths": [
+        "support/**",
+        "tests/sql/**",
+        "tests/engines/**",
+        "tools/test-dbs/lines.json",
+        "crates/drivers/*/src/version.rs"
+      ],
+      "checks": {
+        "rust": [
+          "khipu-engine"
+        ],
+        "node": true
+      }
+    },
+    {
+      "id": "server-tests-inputs",
+      "paths": [
+        "tools/test-dbs/lines.json",
+        "tools/test-dbs/tls/**",
+        "tests/sql/**",
+        "app/src/lib/editor/catalogCompletions.server.test.ts"
+      ],
+      "checks": {
+        "rust": [
+          "rowly-server-tests"
+        ]
+      }
+    },
+    {
+      "id": "desktop-rust-inputs",
+      "paths": [
+        "tools/test-dbs/lines.json",
+        "tests/engines/**",
+        "app/src/lib/i18n/locales.ts"
+      ],
+      "checks": {
+        "rust": [
+          "khipu-desktop"
+        ]
+      }
+    },
+    {
+      "id": "rust-sources-in-vitest",
+      "about": "backend.test.ts y backendKeys.test.ts leen el codigo de Rust.",
+      "paths": [
+        "crates/*/src/**/*.rs",
+        "crates/drivers/*/src/**/*.rs",
+        "app/src-tauri/src/**/*.rs"
+      ],
+      "checks": {
+        "node": true,
+        "vitest": [
+          "src/lib/backend.test.ts",
+          "src/lib/i18n/backendKeys.test.ts"
+        ]
+      }
+    },
+    {
+      "id": "engine-data-in-vitest",
+      "paths": [
+        "support/**",
+        "tests/engines/**"
+      ],
+      "checks": {
+        "vitest": [
+          "src/lib/engines/contract.test.ts"
+        ]
+      }
+    },
+    {
+      "id": "rust-crates",
+      "about": "El paquete de cada archivo lo decide cargo metadata; esta entrada solo dice que el arbol esta mapeado.",
+      "paths": [
+        "crates/**"
+      ],
+      "checks": {}
+    }
+  ]
+}

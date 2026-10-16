@@ -96,7 +96,7 @@ flowchart TB
 | :--- | :--- |
 | Real-server harness (crates/server-tests) | Driver contract (khipu-driver-core); Engine core (khipu-engine); Matrix, evidence, packs, inventory (tools/); MySQL protocol driver (MySQL, MariaDB); PostgreSQL protocol driver; support/*.json (version lines); tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
 | Matrix, evidence, packs, inventory (tools/) | Frontend (Svelte); support/*.json (version lines); tests/engines/contract.json; tests/sql (corpus, coverage.json); tools/support/vendor-support.json (vendor dates); tools/test-dbs/lines.json (test servers, verified) |
-| CI (.github/workflows) | Matrix, evidence, packs, inventory (tools/); Real-server harness (crates/server-tests); support/*.json (version lines); tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
+| CI (.github/workflows) | Matrix, evidence, packs, inventory (tools/); Real-server harness (crates/server-tests); support/*.json (version lines); tests/engines/contract.json; tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
 <!-- /generated: infrastructure -->
 
 Reglas que muestra el grafo:
@@ -213,7 +213,7 @@ Cada dato tiene un dueño. Donde una copia es inevitable, un test la mantiene ig
 | Línea, revisión, capacidades, palabras reservadas, sintaxis eliminada | `support/<engine>.json`, parseado por `khipu_engine::lines` | drivers (capacidades), analizador (sintaxis eliminada), SQL generado y perfiles del frontend (reservadas), contexto (línea, revisión) | Ids de línea en `lines.json` (`crates/engine/tests/lines.rs`); un paquete descargado reemplaza una línea solo con una revisión mayor |
 | Piso de compatibilidad | `COMPATIBILITY_FLOOR_*` en el `version.rs` de cada driver | el aviso del explorador | Igual al inicio de la primera línea (`the_floor_is_where_the_first_line_starts`) |
 | Estado de soporte del fabricante | `tools/support/vendor-support.json` | contexto | `tools/test-dbs/window.mjs` aplica la misma regla de ventana en CI |
-| Versiones verificadas | `verified` en `tools/test-dbs/lines.json`, fijadas por digest | contexto («verificada»), la matriz (`sql-engine.yml`), la evidencia | Las imágenes de `e2e.yml` y `docker-compose.yml` se comparan con ella (`crates/server-tests`) |
+| Versiones verificadas | `verified` en `tools/test-dbs/lines.json`, fijadas por digest | contexto («verificada»), la matriz (`sql-engine.yml`), la evidencia | Las imágenes de `e2e.yml`, `resources.yml` y `docker-compose.yml` se comparan con ella (`crates/server-tests`) |
 | Cobertura de cada fila S/A/G/D | `tests/sql/coverage.json` | `tools/inventory/coverage.mjs` | Cada test contra servidor real tiene que probar una fila |
 | Dependencias | `Cargo.lock`, `app/package-lock.json` | builds | `tools/inventory/dependencies.mjs`: solo crates.io y registry.npmjs.org |
 
@@ -286,7 +286,7 @@ Cada comando del backend tiene un único módulo del frontend que lo invoca, fij
 
 ### Recursos
 
-Lo que se repite no deja nada atrás: 300 reconexiones alternando motores, 300 ciclos de abrir, ejecutar y cerrar consolas con cambio de tema, la terminal en el lugar del grid (sin consola, al cambiar de consola, con `Ctrl+T` y con varias sesiones), 300 ciclos de abrir y cerrar una sesión (cada shell recogido y el backend de vuelta a sus hilos), reposo con una conexión abierta y con 1, 5 y 10 sesiones, y 50 MB de salida en la terminal más `yes` durante 30 s con la interfaz respondiendo y la memoria acotada. `app/tests/e2e/resources.mjs` lo comprueba en cada PR con el heap vivo de JavaScript, el backend y el DOM ([tools/bench/README.es.md](../tools/bench/README.es.md#ciclos-de-recursos)).
+Lo que se repite no deja nada atrás: 300 reconexiones alternando motores, 300 ciclos de abrir, ejecutar y cerrar consolas con cambio de tema, la terminal en el lugar del grid (sin consola, al cambiar de consola, con `Ctrl+T` y con varias sesiones), 300 ciclos de abrir y cerrar una sesión (cada shell recogido y el backend de vuelta a sus hilos), reposo con una conexión abierta y con 1, 5 y 10 sesiones, y 50 MB de salida en la terminal más `yes` durante 30 s con la interfaz respondiendo y la memoria acotada. `app/tests/e2e/resources.mjs` lo comprueba con el heap vivo de JavaScript, el backend y el DOM, un job por escenario: en cada PR que toca lo que un escenario ejercita (`tools/ci/areas.json`), y todos cada noche sobre `develop` y en cada release ([tools/bench/README.es.md](../tools/bench/README.es.md#ciclos-de-recursos)).
 
 ### Grupos de pestañas en mosaico: consolas y resultado
 

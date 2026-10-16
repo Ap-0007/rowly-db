@@ -201,7 +201,7 @@ Only these files may name the engine; a test rejects any other.
 
 ## 14. Matrix, evidence and CI
 
-There is no second list: `sql-engine.yml` builds its matrix from `verified` and the probes of `tools/test-dbs/lines.json`. Each verified release runs the real suites against its pinned image; the harness stops if the server is not the declared release. `tools/test-dbs/evidence.mjs` then requires complete evidence for every verified release. `tools/test-dbs/window.mjs` checks that the verified releases match the vendor support window. A change in `crates/**`, `support/**`, `tests/sql/**` or `tools/test-dbs/**` triggers it.
+There is no second list: `sql-engine.yml` builds its matrix from `verified` and the probes of `tools/test-dbs/lines.json`. Each verified release runs the real suites against its pinned image; the harness stops if the server is not the declared release. `tools/test-dbs/evidence.mjs` then requires complete evidence for every verified release. `tools/test-dbs/window.mjs` checks that the verified releases match the vendor support window. On a PR it runs for the engines the change affects (`tools/ci/areas.json`; a shared change selects all of them), and for every engine nightly on `develop` and on each release. A new engine needs its paths in that map.
 
 ## 15. Documentation
 

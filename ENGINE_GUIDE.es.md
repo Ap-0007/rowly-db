@@ -201,7 +201,7 @@ Solo estos archivos pueden nombrar el motor; un test rechaza cualquier otro.
 
 ## 14. Matriz, evidencia y CI
 
-No hay una segunda lista: `sql-engine.yml` arma su matriz desde `verified` y los probes de `tools/test-dbs/lines.json`. Cada versión verificada corre las suites reales contra su imagen fijada; el harness se detiene si el servidor no es la versión declarada. Después `tools/test-dbs/evidence.mjs` exige la evidencia completa de cada versión verificada. `tools/test-dbs/window.mjs` comprueba que las versiones verificadas coincidan con la ventana de soporte del fabricante. Lo dispara un cambio en `crates/**`, `support/**`, `tests/sql/**` o `tools/test-dbs/**`.
+No hay una segunda lista: `sql-engine.yml` arma su matriz desde `verified` y los probes de `tools/test-dbs/lines.json`. Cada versión verificada corre las suites reales contra su imagen fijada; el harness se detiene si el servidor no es la versión declarada. Después `tools/test-dbs/evidence.mjs` exige la evidencia completa de cada versión verificada. `tools/test-dbs/window.mjs` comprueba que las versiones verificadas coincidan con la ventana de soporte del fabricante. En un PR corre para los motores que el cambio afecta (`tools/ci/areas.json`; un cambio común elige todos), y para todos cada noche sobre `develop` y en cada release. Un motor nuevo necesita sus rutas en ese mapa.
 
 ## 15. Documentación
 

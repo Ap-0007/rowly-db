@@ -27,7 +27,7 @@ If you change an engine, driver, generated SQL, analysis or execution, first rea
 
 1. Branch off `develop` as `feature/<name>`.
 2. Open a pull request into `develop`.
-3. Wait for the `quality` check to pass.
+3. Wait for the `CI gate` check to pass. CI runs what your change touches; the plan is in the `Plan` job summary.
 4. Once it is reviewed and tested in the app, it gets merged.
 
 Before opening the pull request, run:
@@ -46,7 +46,7 @@ node tools/architecture/graph.mjs --check   # dependencies allowed and architect
 
 Blocks between `<!-- generated: … -->` markers are written by those tools; never edit them by hand. `status.mjs --write` and `graph.mjs --write` regenerate them. `graphify-out/` is the exploratory symbol graph; refresh it with `graphify update .` when you change code, if you have [graphify](https://github.com/Graphify-Labs/graphify) (`graphifyy` on PyPI) installed.
 
-CI runs the same gate with Rust 1.90 (`.github/workflows/quality.yml`); a newer local clippy can miss a lint that 1.90 reports, so `cargo +1.90 clippy --workspace --all-targets -- -D warnings` reproduces it exactly. Every test file needs an entry in `tests/inventory.json` with its owner, the property it protects, its risk, its gate and a decision; the `--check` fails until it has one.
+CI runs the same gate with Rust 1.90 (`.github/workflows/rust.yml`, on the packages a change touches and those that depend on them; see `tools/ci/README.md`); a newer local clippy can miss a lint that 1.90 reports, so `cargo +1.90 clippy --workspace --all-targets -- -D warnings` reproduces it exactly. Every test file needs an entry in `tests/inventory.json` with its owner, the property it protects, its risk, its gate and a decision; the `--check` fails until it has one.
 
 The **E2E** workflow builds the app and drives it on Linux/WebKitGTK against disposable MySQL and PostgreSQL servers. `app/tests/e2e/run.mjs` uses the keyboard through `tauri-driver`: connecting, running with Ctrl+Enter, confirming and cancelling a destructive statement, the production confirmation in the console and the grid, counting the total, and the console text after a restart. It needs `WebKitWebDriver`, so it usually runs only in CI. `app/tests/e2e/resources.mjs` opens the app with the WebKit inspector and checks that reconnecting, opening and closing consoles and idling leave no memory, editors or work behind; it also runs locally with `xvfb-run` ([tools/bench/README.md](tools/bench/README.md#resource-cycles)). Windows/WebView2 and macOS/WKWebView remain a manual smoke test before a release.
 
@@ -63,13 +63,13 @@ cargo test -p rowly-server-tests -- --ignored --test-threads=1
 
 `safety` tests the guard, `analysis` the statement splitter and the analyzer, `generated` the SQL the app writes; `contract` tests the drivers through the API the app uses: results, truncation, errors, session, introspection and TLS (what each image offers is the `tls` of its release in `lines.json`). Before running, the harness checks that the server is the release `lines.json` declares. What a release lacks counts as N/A only if the server rejects it. See `tools/test-dbs/README.md`.
 
-`tools/test-dbs/lines.sh` checks version-line boundaries. CI runs all of this on every engine PR, for every verified exact release (`.github/workflows/sql-engine.yml`); the commands and rules are in [SQL_ENGINE.md, §7](SQL_ENGINE.md#7-gates). Do not advertise a release as verified without its complete evidence.
+`tools/test-dbs/lines.sh` checks version-line boundaries. CI runs all of this on every engine PR, for every verified exact release of the affected engines (`.github/workflows/sql-engine.yml`); the commands and rules are in [SQL_ENGINE.md, §7](SQL_ENGINE.md#7-gates). Do not advertise a release as verified without its complete evidence.
 
 Version support packs (SQL_ENGINE.md, §11) come from `support/` with `node tools/support/publish.mjs --out <dir> --evidence <sql-engine.yml real-* and lines-* artifacts from the same commit>`, with the update signing key in `TAURI_SIGNING_PRIVATE_KEY`; the tool refuses without complete evidence. Test fixtures are regenerated with `node tests/support/fixtures.mjs` and signed with `tests/support/test-key`, a test-only key.
 
 When preparing a release, check support dates against each vendor's official notices, then run `python3 tools/support/vendor-support.py` from the repository root. The script uses `endoflife.date` as a release list and applies official exceptions where dates disagree. Review the diff of `tools/support/vendor-support.json` and run `node tools/inventory/status.mjs --write`, which regenerates SQL_ENGINE §5.3 from it.
 
-The support window moves with the calendar: 90 days before a verified release leaves it, `tools/test-dbs/window.mjs` warns in Quality (without failing), and the app release is not published while it stays in `verified` after the date. Then move it from `verified` to `retired` in `tools/test-dbs/lines.json`, with `until` and `evidence` (commit and run of its last green `sql-engine.yml` evidence); its line stays and keeps connecting, as SQL_ENGINE §5.2 says. Regenerate the state with `node tools/inventory/status.mjs --write`.
+The support window moves with the calendar: 90 days before a verified release leaves it, `tools/test-dbs/window.mjs` warns in CI (without failing), and the app release is not published while it stays in `verified` after the date. Then move it from `verified` to `retired` in `tools/test-dbs/lines.json`, with `until` and `evidence` (commit and run of its last green `sql-engine.yml` evidence); its line stays and keeps connecting, as SQL_ENGINE §5.2 says. Regenerate the state with `node tools/inventory/status.mjs --write`.
 
 ## Adding a database engine
 
@@ -86,7 +86,7 @@ An integration without the full matrix remains experimental, not verified suppor
 For maintainers.
 
 1. Bump the version in `Cargo.toml`, `app/package.json` and `app/src-tauri/tauri.conf.json`, along with their lockfiles.
-2. Open a pull request from `develop` into `main` and merge it once `quality` passes.
+2. Open a pull request from `develop` into `main` and merge it once `CI gate` passes.
 3. Tag the merge commit:
 
    ```bash

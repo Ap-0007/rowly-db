@@ -27,7 +27,7 @@ Si tocas un motor, un driver, SQL generado, análisis o ejecución, lee primero 
 
 1. Crea una rama desde `develop` con el nombre `feature/<nombre>`.
 2. Abre un pull request hacia `develop`.
-3. Espera a que pase el check `quality`.
+3. Espera a que pase el check `CI gate`. El CI corre lo que toca tu cambio; el plan está en el resumen del job `Plan`.
 4. Cuando está revisado y probado en la app, se fusiona.
 
 Antes de abrir el pull request, ejecuta:
@@ -46,7 +46,7 @@ node tools/architecture/graph.mjs --check   # dependencias permitidas y grafo de
 
 Los bloques entre marcadores `<!-- generated: … -->` los escriben esas herramientas; nunca los edites a mano. `status.mjs --write` y `graph.mjs --write` los regeneran. `graphify-out/` es el grafo de símbolos para explorar; actualízalo con `graphify update .` cuando cambies código, si tienes [graphify](https://github.com/Graphify-Labs/graphify) (`graphifyy` en PyPI) instalado.
 
-El CI corre la misma compuerta con Rust 1.90 (`.github/workflows/quality.yml`); un clippy local más nuevo puede no ver un aviso que la 1.90 sí marca, así que `cargo +1.90 clippy --workspace --all-targets -- -D warnings` lo reproduce tal cual. Cada archivo de test necesita una entrada en `tests/inventory.json` con su dueño, la propiedad que protege, su riesgo, su compuerta y una decisión; el `--check` falla hasta que la tenga.
+El CI corre la misma compuerta con Rust 1.90 (`.github/workflows/rust.yml`, en los paquetes que toca un cambio y los que dependen de ellos; ver `tools/ci/README.es.md`); un clippy local más nuevo puede no ver un aviso que la 1.90 sí marca, así que `cargo +1.90 clippy --workspace --all-targets -- -D warnings` lo reproduce tal cual. Cada archivo de test necesita una entrada en `tests/inventory.json` con su dueño, la propiedad que protege, su riesgo, su compuerta y una decisión; el `--check` falla hasta que la tenga.
 
 El workflow **E2E** compila la app y la maneja en Linux/WebKitGTK contra un MySQL y un PostgreSQL desechables. `app/tests/e2e/run.mjs` usa el teclado con `tauri-driver`: conectar, ejecutar con Ctrl+Enter, confirmar y cancelar una sentencia destructiva, la confirmación de producción en la consola y en el grid, contar el total y el texto de la consola tras reiniciar. Necesita `WebKitWebDriver`, así que normalmente solo corre en el CI. `app/tests/e2e/resources.mjs` abre la app con el inspector de WebKit y comprueba que reconectar, abrir y cerrar consolas y el reposo no dejan memoria, editores ni trabajo detrás; corre también en local con `xvfb-run` ([tools/bench/README.es.md](tools/bench/README.es.md#ciclos-de-recursos)). Windows/WebView2 y macOS/WKWebView siguen siendo humo manual antes de una release.
 
@@ -63,13 +63,13 @@ cargo test -p rowly-server-tests -- --ignored --test-threads=1
 
 `safety` prueba el guard, `analysis` el divisor de sentencias y el analizador, `generated` el SQL que escribe la app; `contract` prueba los drivers por la API que usa la app: resultados, truncado, errores, sesión, introspección y TLS (lo que ofrece cada imagen es el `tls` de su versión en `lines.json`). Antes de ejecutar, el harness comprueba que el servidor es la versión que declara `lines.json`. Lo que una versión no tiene cuenta como N/A solo si el servidor lo rechaza. Ver `tools/test-dbs/README.es.md`.
 
-`tools/test-dbs/lines.sh` comprueba los límites de las líneas de versión. El CI corre todo esto en cada PR de motor, en cada versión exacta verificada (`.github/workflows/sql-engine.yml`); los comandos y las reglas están en [SQL_ENGINE.es.md, §7](SQL_ENGINE.es.md#7-compuertas). No anuncies una versión como verificada sin su evidencia completa.
+`tools/test-dbs/lines.sh` comprueba los límites de las líneas de versión. El CI corre todo esto en cada PR de motor, en cada versión exacta verificada de los motores afectados (`.github/workflows/sql-engine.yml`); los comandos y las reglas están en [SQL_ENGINE.es.md, §7](SQL_ENGINE.es.md#7-compuertas). No anuncies una versión como verificada sin su evidencia completa.
 
 Los paquetes de soporte de versión (SQL_ENGINE.es.md, §11) salen de `support/` con `node tools/support/publish.mjs --out <dir> --evidence <artefactos real-* y lines-* de sql-engine.yml, del mismo commit>`, con la clave de firma de las actualizaciones en `TAURI_SIGNING_PRIVATE_KEY`; la herramienta se niega sin evidencia completa. Los fixtures de prueba se regeneran con `node tests/support/fixtures.mjs` y están firmados con `tests/support/test-key`, una clave solo de prueba.
 
 Al preparar una release, comprueba las fechas de soporte en los avisos oficiales de cada fabricante y después ejecuta `python3 tools/support/vendor-support.py` desde la raíz. El script usa `endoflife.date` como listado y aplica excepciones oficiales cuando hay discrepancias. Revisa el diff de `tools/support/vendor-support.json` y corre `node tools/inventory/status.mjs --write`, que regenera SQL_ENGINE §5.3 a partir de él.
 
-La ventana de soporte avanza con el calendario: 90 días antes de que una versión verificada salga de ella, `tools/test-dbs/window.mjs` avisa en Quality (sin fallar), y la release no se publica mientras siga en `verified` pasada la fecha. Entonces pásala de `verified` a `retired` en `tools/test-dbs/lines.json`, con `until` y `evidence` (commit y corrida de su última evidencia verde de `sql-engine.yml`); su línea se queda y sigue conectando, como dice SQL_ENGINE §5.2. Regenera el estado con `node tools/inventory/status.mjs --write`.
+La ventana de soporte avanza con el calendario: 90 días antes de que una versión verificada salga de ella, `tools/test-dbs/window.mjs` avisa en el CI (sin fallar), y la release no se publica mientras siga en `verified` pasada la fecha. Entonces pásala de `verified` a `retired` en `tools/test-dbs/lines.json`, con `until` y `evidence` (commit y corrida de su última evidencia verde de `sql-engine.yml`); su línea se queda y sigue conectando, como dice SQL_ENGINE §5.2. Regenera el estado con `node tools/inventory/status.mjs --write`.
 
 ## Agregar un motor de base de datos
 
@@ -86,7 +86,7 @@ Una integración sin la matriz completa queda como experimental, no como soporte
 Para mantenedores.
 
 1. Sube la versión en `Cargo.toml`, `app/package.json` y `app/src-tauri/tauri.conf.json`, junto con sus lockfiles.
-2. Abre un pull request de `develop` a `main` y fusiónalo cuando pase `quality`.
+2. Abre un pull request de `develop` a `main` y fusiónalo cuando pase `CI gate`.
 3. Etiqueta el commit fusionado:
 
    ```bash
