@@ -139,6 +139,35 @@
   let expanded = $state(new Map<string, boolean>());
   let schemaPickerOpen = $state(false);
   let schemaPicker = $state<HTMLElement>();
+  let schemaMenu = $state<HTMLElement>();
+  // El menu se dibuja fuera de .tree-scroll: dentro, el scroll y la mascara
+  // del desvanecido lo recortaban a una o dos filas (#106). Su posicion sale
+  // de la fila de la conexion; abre hacia arriba si abajo no cabe.
+  let schemaMenuPlace = $state({ left: 0, right: 0, top: 0, bottom: 0, up: false, maxHeight: 288 });
+
+  function placeSchemaMenu() {
+    const row = schemaPicker?.closest(".connection-row");
+    if (!row) return;
+    const rect = row.getBoundingClientRect();
+    const gap = 2;
+    const margin = 8;
+    const below = window.innerHeight - rect.bottom - gap - margin;
+    const above = rect.top - gap - margin;
+    const up = below < 160 && above > below;
+    schemaMenuPlace = {
+      left: rect.left + 8,
+      right: window.innerWidth - rect.right + 4,
+      top: rect.bottom + gap,
+      bottom: window.innerHeight - rect.top + gap,
+      up,
+      maxHeight: Math.min(288, up ? above : below),
+    };
+  }
+
+  function toggleSchemaPicker() {
+    if (!schemaPickerOpen) placeSchemaMenu();
+    schemaPickerOpen = !schemaPickerOpen;
+  }
 
   const filtering = $derived(filter.trim() !== "");
   // Solo se avisa cuando se sabe que NO esta cifrada: el caso cifrado no
@@ -227,13 +256,28 @@
   }
 
   function closeSchemaPickerOnOutsideClick(event: PointerEvent) {
-    if (schemaPickerOpen && schemaPicker && !schemaPicker.contains(event.target as Node)) {
+    const target = event.target as Node;
+    if (schemaPickerOpen && !schemaPicker?.contains(target) && !schemaMenu?.contains(target)) {
       schemaPickerOpen = false;
     }
   }
+
+  // Fijo en la ventana: si el arbol se desplaza o la ventana cambia, el menu
+  // se cerraria lejos de su fila, asi que se cierra.
+  function closeSchemaPicker() {
+    schemaPickerOpen = false;
+  }
+
+  function closeSchemaPickerOnEscape(event: KeyboardEvent) {
+    if (!schemaPickerOpen || event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    schemaPickerOpen = false;
+    schemaPicker?.querySelector<HTMLButtonElement>(".schema-count")?.focus();
+  }
 </script>
 
-<svelte:window onpointerdown={closeSchemaPickerOnOutsideClick} />
+<svelte:window onpointerdown={closeSchemaPickerOnOutsideClick} onresize={closeSchemaPicker} onkeydown={closeSchemaPickerOnEscape} />
 
 {#if openMenuAt}
   <ContextMenu
@@ -395,7 +439,7 @@
     {/if}
   </div>
 
-  <nav class="tree-scroll" aria-label={$t("explorer.tree.label")} use:scrollFade>
+  <nav class="tree-scroll" aria-label={$t("explorer.tree.label")} use:scrollFade onscroll={closeSchemaPicker}>
     <ul class="tree" role="tree" use:treeKeys>
       <li role="treeitem" aria-expanded={isConnectionOpen()} aria-selected="false">
         <div class="connection-row">
@@ -429,7 +473,7 @@
                 aria-haspopup="true"
                 aria-expanded={schemaPickerOpen}
                 use:tooltip={$t("explorer.schemas.pick")}
-                onclick={() => (schemaPickerOpen = !schemaPickerOpen)}
+                onclick={toggleSchemaPicker}
               >
                 {#if loadingSchemas}
                   <LoaderCircle size={11} class="spin" aria-label={$t("explorer.schemas.loading")} />
@@ -438,32 +482,6 @@
                 <ChevronDown size={11} aria-hidden="true" />
               </button>
 
-              {#if schemaPickerOpen}
-                <div class="ui-menu schema-menu" role="menu" aria-label={$t("explorer.schemas.menu")}>
-                  {#each explorer.availableSchemas as schema (schema)}
-                    {@const isDefault = schema === explorer.defaultSchema}
-                    <button
-                      type="button"
-                      role="menuitemcheckbox"
-                      aria-checked={visibleSchemas.has(schema)}
-                      class="ui-menu-item schema-option"
-                      disabled={isDefault || loadingSchemas}
-                      use:tooltip={isDefault ? $t("explorer.schemas.defaultTitle") : undefined}
-                      onclick={() => toggleSchema(schema)}
-                    >
-                      <span class="ui-checkbox-box">
-                        {#if visibleSchemas.has(schema)}
-                          <Check size={10} strokeWidth={3} aria-hidden="true" />
-                        {/if}
-                      </span>
-                      <span class="label">{schema}</span>
-                      {#if isDefault}
-                        <span class="detail">{$t("explorer.schemas.default")}</span>
-                      {/if}
-                    </button>
-                  {/each}
-                </div>
-              {/if}
             </div>
           {/if}
         </div>
@@ -480,6 +498,43 @@
       </li>
     </ul>
   </nav>
+
+{#if schemaPickerOpen && explorer}
+  <div
+    class="ui-menu schema-menu"
+    role="menu"
+    aria-label={$t("explorer.schemas.menu")}
+    bind:this={schemaMenu}
+    style:left={`${schemaMenuPlace.left}px`}
+    style:right={`${schemaMenuPlace.right}px`}
+    style:top={schemaMenuPlace.up ? null : `${schemaMenuPlace.top}px`}
+    style:bottom={schemaMenuPlace.up ? `${schemaMenuPlace.bottom}px` : null}
+    style:max-height={`${schemaMenuPlace.maxHeight}px`}
+  >
+    {#each explorer.availableSchemas as schema (schema)}
+      {@const isDefault = schema === explorer.defaultSchema}
+      <button
+        type="button"
+        role="menuitemcheckbox"
+        aria-checked={visibleSchemas.has(schema)}
+        class="ui-menu-item schema-option"
+        disabled={isDefault || loadingSchemas}
+        use:tooltip={isDefault ? $t("explorer.schemas.defaultTitle") : undefined}
+        onclick={() => toggleSchema(schema)}
+      >
+        <span class="ui-checkbox-box">
+          {#if visibleSchemas.has(schema)}
+            <Check size={10} strokeWidth={3} aria-hidden="true" />
+          {/if}
+        </span>
+        <span class="label">{schema}</span>
+        {#if isDefault}
+          <span class="detail">{$t("explorer.schemas.default")}</span>
+        {/if}
+      </button>
+    {/each}
+  </div>
+{/if}
 </div>
 
 <style>
@@ -871,13 +926,9 @@
   }
 
   .schema-menu {
-    position: absolute;
-    z-index: 20;
-    top: calc(100% + 2px);
-    right: var(--space-1);
-    left: var(--space-2);
+    position: fixed;
+    z-index: 60;
     overflow-y: auto;
-    max-height: 18rem;
   }
 
 
