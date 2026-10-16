@@ -39,4 +39,4 @@ El plan calcula qué archivos de Vitest se relacionan con un cambio, más los te
 
 ## Agregar un módulo
 
-Un módulo, motor o extensión nuevo agrega una entrada a `areas.json` con sus rutas y checks. Mientras no la tenga, sus rutas no caen en ningún área y eligen todo.
+Un módulo, motor o extensión nuevo agrega una entrada a `areas.json` con sus rutas y checks. Mientras no la tenga, sus rutas no caen en ningún área: la corrida elige todo y la comprobación del repositorio (`select.test.mjs`) falla y nombra los archivos que necesitan un área.

@@ -39,4 +39,4 @@ The plan computes which Vitest files a change relates to, plus the contract test
 
 ## Adding a module
 
-A new module, engine or extension adds an entry to `areas.json` with its paths and checks. Until it does, its paths match no area and select everything.
+A new module, engine or extension adds an entry to `areas.json` with its paths and checks. Until it does, its paths match no area: the run selects everything and the repository check (`select.test.mjs`) fails, naming the files that need an area.

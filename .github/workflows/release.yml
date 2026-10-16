@@ -146,10 +146,12 @@ jobs:
           ls -l dist
       - name: Publicar
         run: |
-          prerelease=()
-          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          # El actualizador lee releases/latest: una estable lo es de forma
+          # explicita, una preliminar nunca.
+          prerelease=() latest=(--latest)
+          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease) latest=(--latest=false); fi
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft "${prerelease[@]}" \
             --title "Rowly DB $TAG" \
             --notes "Commit $GITHUB_SHA. Verificación de este commit (Quality, E2E, matriz SQL y D7/D8): verification.json." \
             dist/*
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "${latest[@]}"
