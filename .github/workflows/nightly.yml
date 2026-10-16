@@ -1,0 +1,26 @@
+name: Nightly
+
+# Cada noche, la validacion completa sobre develop: los PRs y los push corren
+# solo lo que eligio el planner, y esto cubre lo que la seleccion pudiera
+# dejar fuera (todos los paquetes, motores, escenarios de recursos y Vitest
+# completo), con las semillas de fuzz de la release.
+#
+# Un schedule corre en la rama por defecto (main); por eso no valida aqui,
+# sino que pide ci.yml en develop: corre con los workflows y el codigo de
+# develop, fijado en el commit que tenga en ese momento.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref develop -f full=true -f fuzz_seeds=0,1,2

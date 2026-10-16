@@ -177,7 +177,10 @@
       "label": "CI (.github/workflows)",
       "kind": "infra",
       "paths": [
-        ".github/workflows/"
+        ".github/workflows/",
+        ".github/scripts/check-site.py",
+        "tools/ci/",
+        "tools/release/"
       ]
     }
   ],

@@ -1,0 +1,102 @@
+name: Rust
+
+# fmt, clippy y tests del workspace de Rust, y el PTY de la terminal en
+# macOS y Windows. Lo llaman ci.yml (con los paquetes que eligio el planner)
+# y release.yml (todo el workspace).
+#
+# La cache de compilacion (rust-cache) solo se guarda desde una corrida de
+# todo el workspace: una parcial dejaria una cache incompleta bajo la misma
+# clave. La corrida nocturna corre en la rama por defecto, y su cache la
+# leen todas las ramas y los PRs. Una cache nunca es evidencia: los tests
+# corren igual.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit a probar (vacio: el del evento)"
+        type: string
+        default: ""
+      packages:
+        description: "Paquetes a probar separados por espacios, o * para el workspace"
+        type: string
+        default: "*"
+      terminal:
+        description: "Probar la terminal en macOS y Windows"
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      # Solo khipu-desktop enlaza WebKitGTK.
+      - name: Install Tauri Linux system dependencies
+        if: inputs.packages == '*' || contains(format(' {0} ', inputs.packages), ' khipu-desktop ')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential curl wget file libssl-dev libgtk-3-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.90
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: quality
+          save-if: ${{ inputs.packages == '*' }}
+
+      - name: Paquetes
+        id: scope
+        env:
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          if [ "$PACKAGES" = "*" ]; then
+            echo "args=--workspace" >> "$GITHUB_OUTPUT"
+          else
+            printf 'args=%s\n' "$(printf -- '-p %s ' $PACKAGES)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy ${{ steps.scope.outputs.args }} --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        run: cargo test ${{ steps.scope.outputs.args }} --locked
+
+  # El PTY de la terminal integrada en las otras plataformas: en macOS los
+  # mismos tests con un shell real; en Windows se compila ConPTY y se prueba
+  # la eleccion del shell (los tests de PTY son de Unix).
+  terminal:
+    name: Terminal (${{ matrix.os }})
+    if: inputs.terminal
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.90
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: terminal
+
+      - name: cargo test terminal
+        run: cargo test -p khipu-desktop --lib --locked terminal

@@ -96,7 +96,7 @@ flowchart TB
 | :--- | :--- |
 | Real-server harness (crates/server-tests) | Driver contract (khipu-driver-core); Engine core (khipu-engine); Matrix, evidence, packs, inventory (tools/); MySQL protocol driver (MySQL, MariaDB); PostgreSQL protocol driver; support/*.json (version lines); tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
 | Matrix, evidence, packs, inventory (tools/) | Frontend (Svelte); support/*.json (version lines); tests/engines/contract.json; tests/sql (corpus, coverage.json); tools/support/vendor-support.json (vendor dates); tools/test-dbs/lines.json (test servers, verified) |
-| CI (.github/workflows) | Matrix, evidence, packs, inventory (tools/); Real-server harness (crates/server-tests); support/*.json (version lines); tests/sql (corpus, coverage.json); tools/test-dbs/lines.json (test servers, verified) |
+| CI (.github/workflows) | Matrix, evidence, packs, inventory (tools/); Real-server harness (crates/server-tests); tools/test-dbs/lines.json (test servers, verified) |
 <!-- /generated: infrastructure -->
 
 Rules the graph shows:
@@ -213,7 +213,7 @@ Each fact has one owner. Where a copy is unavoidable, a test keeps it equal.
 | Behavior line, revision, capabilities, reserved words, removed syntax | `support/<engine>.json`, parsed by `khipu_engine::lines` | drivers (capabilities), analyzer (removed syntax), generated SQL and frontend profiles (reserved words), context (line, revision) | Line ids in `lines.json` (`crates/engine/tests/lines.rs`); a downloaded pack replaces a line only with a higher revision |
 | Compatibility floor | `COMPATIBILITY_FLOOR_*` in each driver's `version.rs` | the explorer warning | Equal to the start of the first line (`the_floor_is_where_the_first_line_starts`) |
 | Vendor support status | `tools/support/vendor-support.json` | context | `tools/test-dbs/window.mjs` applies the same window rule in CI |
-| Verified releases | `verified` in `tools/test-dbs/lines.json`, pinned by digest | context ("verified"), the matrix (`sql-engine.yml`), evidence | `e2e.yml` and `docker-compose.yml` images are checked against it (`crates/server-tests`) |
+| Verified releases | `verified` in `tools/test-dbs/lines.json`, pinned by digest | context ("verified"), the matrix (`sql-engine.yml`), evidence | `e2e.yml`, `resources.yml` and `docker-compose.yml` images are checked against it (`crates/server-tests`) |
 | Coverage of each S/A/G/D row | `tests/sql/coverage.json` | `tools/inventory/coverage.mjs` | Every real-server test must prove a row |
 | Dependencies | `Cargo.lock`, `app/package-lock.json` | builds | `tools/inventory/dependencies.mjs`: only crates.io and registry.npmjs.org |
 
@@ -286,7 +286,7 @@ Each backend command has a single frontend module that invokes it, pinned by `ap
 
 ### Resources
 
-Whatever repeats leaves nothing behind: 300 reconnections alternating engines, 300 cycles of opening, running and closing consoles with a theme switch, the terminal in the grid's place (with no console, across console switches, with `Ctrl+T` and with several sessions), 300 cycles of opening and closing a session (every shell reaped, the backend back to its threads), idling with an open connection and with 1, 5 and 10 sessions, and 50 MB of terminal output plus `yes` for 30 s with the interface responsive and memory bounded. `app/tests/e2e/resources.mjs` checks it on every PR using the live JavaScript heap, the backend and the DOM ([tools/bench/README.md](../tools/bench/README.md#resource-cycles)).
+Whatever repeats leaves nothing behind: 300 reconnections alternating engines, 300 cycles of opening, running and closing consoles with a theme switch, the terminal in the grid's place (with no console, across console switches, with `Ctrl+T` and with several sessions), 300 cycles of opening and closing a session (every shell reaped, the backend back to its threads), idling with an open connection and with 1, 5 and 10 sessions, and 50 MB of terminal output plus `yes` for 30 s with the interface responsive and memory bounded. `app/tests/e2e/resources.mjs` checks it with the live JavaScript heap, the backend and the DOM, one job per scenario: on every PR that touches what a scenario exercises (`tools/ci/areas.json`), and all of them every night on `develop` and on every release ([tools/bench/README.md](../tools/bench/README.md#resource-cycles)).
 
 ### Tiled tab groups: consoles and results
 

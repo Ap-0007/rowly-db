@@ -1,0 +1,104 @@
+name: Node
+
+# El frontend (check, Vitest, build) cuando el planner lo elige, y las
+# comprobaciones del repositorio siempre: inventarios, contratos de los
+# documentos y los tests de las herramientas. Esas leen README, SQL_ENGINE,
+# ARCHITECTURE y el codigo, asi que un cambio de docs tambien las necesita;
+# solo usan la biblioteca estandar de Node, sin npm ci.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+      app:
+        description: "Correr check, Vitest y build del frontend"
+        type: boolean
+        default: true
+      vitest:
+        description: "Seleccion de Vitest del planner (JSON); sin ella, completo"
+        type: string
+        default: '{"mode":"full","selection":"shadow"}'
+
+jobs:
+  app:
+    name: Node (check, test, build)
+    if: inputs.app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: npm ci
+        working-directory: app
+        run: npm ci
+
+      - name: npm run check
+        working-directory: app
+        run: npm run check
+
+      # Con `selection: active` corre solo lo relacionado con los archivos
+      # cambiados mas los contratos; en `shadow` (hoy) el plan solo se
+      # informa y npm test corre completo. Una seleccion vacia no reemplaza
+      # nada: check, build y E2E siguen corriendo.
+      - name: npm test
+        working-directory: app
+        env:
+          VITEST_PLAN: ${{ inputs.vitest }}
+        run: |
+          selection=$(jq -r '.selection' <<< "$VITEST_PLAN")
+          mode=$(jq -r '.mode' <<< "$VITEST_PLAN")
+          if [ "$selection" = active ] && [ "$mode" = related ]; then
+            mapfile -t files < <(jq -r '.files[]' <<< "$VITEST_PLAN")
+            mapfile -t tests < <(jq -r '.tests[]' <<< "$VITEST_PLAN")
+            if [ "${#files[@]}" -gt 0 ]; then npx vitest related --run "${files[@]}"; fi
+            npx vitest run "${tests[@]}"
+          else
+            npm test
+          fi
+
+      - name: npm run build
+        working-directory: app
+        run: npm run build
+
+  repo:
+    name: Repositorio (inventarios y contratos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Inventario de tests al dia
+        run: node tools/inventory/tests.mjs --check
+
+      - name: Cobertura de SQL_ENGINE (tests/sql/coverage.json)
+        run: node tools/inventory/coverage.mjs
+
+      - name: Solo versiones publicadas de las dependencias (sin forks, git ni parches)
+        run: node tools/inventory/dependencies.mjs
+
+      - name: El grafo de arquitectura coincide con el codigo (docs/ARCHITECTURE.md)
+        run: node tools/architecture/graph.mjs --check
+
+      - name: El estado de README y SQL_ENGINE sale de sus datos
+        run: node tools/inventory/status.mjs
+
+      - name: Las versiones verificadas son las de la ventana de soporte (SQL_ENGINE §5.2)
+        run: node tools/test-dbs/window.mjs
+
+      - name: La release solo se publica con la evidencia de su commit; el planner de CI
+        run: node --test tools/test-dbs/*.test.mjs tools/ci/*.test.mjs

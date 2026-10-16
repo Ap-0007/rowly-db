@@ -1,0 +1,257 @@
+name: CI
+
+# La entrada de toda la validacion de PRs y de develop/main. El planner
+# (tools/ci/select.mjs, con el mapa tools/ci/areas.json) mira lo que cambia
+# y elige que workflows corren; las compuertas de abajo son las que exige la
+# proteccion de ramas.
+#
+# - Un PR corre una sola vez (pull_request); develop y main, en cada push.
+#   Para validar una rama antes de abrir el PR: workflow_dispatch.
+# - Un push nuevo a un PR cancela la corrida anterior. Los push a develop y
+#   main no se cancelan: cada uno valida solo su propio rango de cambios.
+# - La concurrencia vive solo aqui y en release.yml: los workflows que se
+#   llaman no la tienen, asi no comparten grupo con quien los llama.
+# - Cada compuerta corre siempre y falla si el plan fallo, si algo elegido no
+#   termino bien o si algo no elegido no se salto. Nunca queda verde por
+#   defecto. `CI gate` las junta a todas.
+# - Cada noche nightly.yml pide aqui una corrida completa sobre develop.
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Correr todo, sin el planner"
+        type: boolean
+        default: false
+      fuzz_seeds:
+        description: "Semillas del fuzz (la release usa 0,1,2)"
+        type: string
+        default: "0"
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # La regla de cada compuerta, con PLAN, SELECTED y RESULT.
+  GATE: |
+    echo "plan: $PLAN; elegido: ${SELECTED:-?}; resultado: $RESULT"
+    [ "$PLAN" = success ] || { echo "::error::el plan no termino bien ($PLAN)"; exit 1; }
+    case "$SELECTED" in
+      true) [ "$RESULT" = success ] || { echo "::error::elegido y termino en $RESULT"; exit 1; } ;;
+      false) [ "$RESULT" = skipped ] || { echo "::error::no elegido, pero termino en $RESULT"; exit 1; } ;;
+      *) echo "::error::el plan no dijo si elegirlo"; exit 1 ;;
+    esac
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.plan.outputs.ref }}
+      full: ${{ steps.plan.outputs.full }}
+      node: ${{ steps.plan.outputs.node }}
+      rust: ${{ steps.plan.outputs.rust }}
+      rust-packages: ${{ steps.plan.outputs.rust-packages }}
+      terminal: ${{ steps.plan.outputs.terminal }}
+      e2e: ${{ steps.plan.outputs.e2e }}
+      build: ${{ steps.plan.outputs.build }}
+      resources: ${{ steps.plan.outputs.resources }}
+      sql: ${{ steps.plan.outputs.sql }}
+      site: ${{ steps.plan.outputs.site }}
+      release: ${{ steps.plan.outputs.release }}
+      vitest: ${{ steps.plan.outputs.vitest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # cargo metadata (sin dependencias) da el grafo de paquetes del workspace.
+      - id: plan
+        run: node tools/ci/select.mjs --github
+
+  rust:
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    uses: ./.github/workflows/rust.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+      packages: ${{ needs.plan.outputs.rust-packages }}
+      terminal: ${{ needs.plan.outputs.terminal == 'true' }}
+
+  node:
+    needs: plan
+    uses: ./.github/workflows/node.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+      app: ${{ needs.plan.outputs.node == 'true' }}
+      vitest: ${{ needs.plan.outputs.vitest }}
+
+  app:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/app-build.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+
+  e2e:
+    needs: [plan, app]
+    if: needs.plan.outputs.e2e == 'true'
+    uses: ./.github/workflows/e2e.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+
+  resources:
+    needs: [plan, app]
+    if: needs.plan.outputs.resources != '[]'
+    uses: ./.github/workflows/resources.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+      scenarios: ${{ needs.plan.outputs.resources }}
+
+  sql:
+    needs: plan
+    if: needs.plan.outputs.sql != '[]'
+    uses: ./.github/workflows/sql-engine.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+      # Completo: sin alcance en el reporte. Si no, los motores elegidos.
+      engines: ${{ needs.plan.outputs.full == 'true' && '*' || needs.plan.outputs.sql }}
+      fuzz_seeds: ${{ inputs.fuzz_seeds || '0' }}
+
+  site:
+    needs: plan
+    if: needs.plan.outputs.site == 'true'
+    uses: ./.github/workflows/site.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+
+  release:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    uses: ./.github/workflows/release-build.yml
+    with:
+      ref: ${{ needs.plan.outputs.ref }}
+      dry-run: true
+
+  # --- Compuertas -------------------------------------------------------------
+  # `selected` dice si el plan eligio el trabajo; `result`, como termino.
+
+  gate-rust:
+    name: Rust (fmt, clippy, test)
+    needs: [plan, rust]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.rust }}
+          RESULT: ${{ needs.rust.result }}
+        run: eval "$GATE"
+
+  gate-node:
+    name: Node (check, test, build)
+    needs: [plan, node]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      # node.yml corre siempre: sus comprobaciones del repositorio no dependen del plan.
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: "true"
+          RESULT: ${{ needs.node.result }}
+        run: eval "$GATE"
+
+  gate-e2e:
+    name: E2E (Linux, WebKitGTK)
+    needs: [plan, app, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: App
+        env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.build }}
+          RESULT: ${{ needs.app.result }}
+        run: eval "$GATE"
+      - name: Recorridos
+        env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.e2e }}
+          RESULT: ${{ needs.e2e.result }}
+        run: eval "$GATE"
+
+  gate-resources:
+    name: Recursos (Linux, WebKitGTK)
+    needs: [plan, app, resources]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: App
+        env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.build }}
+          RESULT: ${{ needs.app.result }}
+        run: eval "$GATE"
+      - name: Escenarios
+        env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.resources != '[]' }}
+          RESULT: ${{ needs.resources.result }}
+        run: eval "$GATE"
+
+  gate-sql:
+    name: SQL engine
+    needs: [plan, sql]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.sql != '[]' }}
+          RESULT: ${{ needs.sql.result }}
+        run: eval "$GATE"
+
+  gate-site:
+    name: Web
+    needs: [plan, site]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.site }}
+          RESULT: ${{ needs.site.result }}
+        run: eval "$GATE"
+
+  gate-release:
+    name: Release build
+    needs: [plan, release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SELECTED: ${{ needs.plan.outputs.release }}
+          RESULT: ${{ needs.release.result }}
+        run: eval "$GATE"
+
+  gate:
+    name: CI gate
+    needs: [gate-rust, gate-node, gate-e2e, gate-resources, gate-sql, gate-site, gate-release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          jq -e 'length == 7 and all(. == "success")' <<< "$RESULTS"
