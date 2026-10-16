@@ -2,17 +2,17 @@
   "format": 1,
   "about": "Inventario de tests de Rowly DB. Ver tools/inventory/tests.mjs; los campos manuales se editan aqui.",
   "summary": {
-    "files": 152,
-    "tests": 1597,
+    "files": 153,
+    "tests": 1602,
     "ignored": 32,
     "byDecision": {
-      "keep": 152,
+      "keep": 153,
       "move": 0,
       "rewrite": 0,
       "remove": 0
     },
     "byGate": {
-      "pr": 145,
+      "pr": 146,
       "engine-pr": 7,
       "manual": 0,
       "release": 0
@@ -1680,6 +1680,26 @@
       "durationMs": 11
     },
     {
+      "path": "app/src/lib/results/gridAutoScroll.test.ts",
+      "domain": "results",
+      "owner": "app/src/lib/components/results/DataGrid.svelte",
+      "property": "Al arrastrar una selección más allá del borde de la grilla, la vista se desplaza hacia ese lado con una velocidad que crece con la distancia y tiene tope (#98)",
+      "risk": "P2",
+      "gate": "pr",
+      "decision": "keep",
+      "kind": "ts",
+      "tests": 5,
+      "ignored": 0,
+      "environment": "node",
+      "dependencies": [
+        "gridAutoScroll"
+      ],
+      "external": [
+        "vitest"
+      ],
+      "durationMs": null
+    },
+    {
       "path": "app/src/lib/results/gridClipboard.test.ts",
       "domain": "results",
       "owner": "app/src/lib/results/gridClipboard.ts",
@@ -3258,7 +3278,8 @@
       "environment": "real-server",
       "env": [
         "ROWLY_FUZZ_CASES",
-        "ROWLY_FUZZ_SEED"
+        "ROWLY_FUZZ_SEED",
+        "ROWLY_FUZZ_SEEDS"
       ],
       "durationMs": null
     },
