@@ -76,6 +76,7 @@ Todos los campos son obligatorios: no hay `Default`. Decide cada uno para el mot
 | `select_into_variable_lists` | `SELECT … INTO a, b` en varias variables | analizador |
 | `sql_mode_query` | La consulta que dice si la sesión usa `NO_BACKSLASH_ESCAPES` | modo de la sesión → guard ⚠ |
 | `lines` | `include_str!` de `support/<id>.json` | líneas (paso 6) |
+| `cli_client` | El cliente de línea de comandos que abre la terminal conectada: los programas, en orden; los grupos de argumentos con `{host}`, `{port}`, `{user}` y `{database}` (sin base, el grupo con `{database}` no va), y la variable de entorno de la contraseña | terminal |
 
 Un mecanismo que el motor nuevo necesita y que ningún campo expresa pasa a ser **un campo o una variante nueva** de la definición, que usa el código compartido y se prueba en cada motor existente. Nunca un `if` sobre el motor: los tests de frontera lo rechazan (ARCHITECTURE, «Fronteras que se comprueban solas»).
 

@@ -14,6 +14,7 @@ import { toConnectionFailure } from "$lib/connections/connectionErrors";
 import { forgetQueryHistory } from "./queryHistory";
 import { getDriver, type ConnectionDriver } from "$lib/connections";
 import { forgetConnectionPassword, loadConnectionPassword } from "$lib/credentials";
+import type { ClientTarget } from "$lib/terminal";
 import { connectionProfiles, removeConnectionProfile, type ConnectionProfile } from "./connectionProfiles";
 import { forgetProfileConsoles } from "./queryConsoles";
 import { closeSqlFolder } from "./sqlFolders";
@@ -360,6 +361,27 @@ async function releaseBackendConnection(): Promise<void> {
   } catch {
     // Nada que hacer.
   }
+}
+
+// La conexion del perfil activo para el cliente de una terminal conectada
+// (#107): la base en que esta el explorador (o la del perfil) y la
+// contraseña, si el perfil la guarda.
+export async function databaseClientTarget(profileId: string): Promise<ClientTarget> {
+  const profile = get(connectionProfiles).find((candidate) => candidate.id === profileId);
+  if (!profile) throw new Error(`perfil ${profileId} desconocido`);
+  let password: string | null;
+  try {
+    password = await loadConnectionPassword(profile.id, profile.passwordPolicy);
+  } catch {
+    password = null;
+  }
+  return {
+    host: profile.host,
+    port: profile.port,
+    username: profile.username,
+    database: get(databaseExplorer)?.database ?? profileDatabase(profile),
+    password,
+  };
 }
 
 // Elegir otra base en el explorador (#105): se vuelve a conectar el mismo

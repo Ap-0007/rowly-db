@@ -18,11 +18,29 @@ export interface TerminalInfo {
   cwd: string;
 }
 
+// La conexion a la que abre el cliente del motor una terminal conectada
+// (#107). La contraseña solo va al entorno de ese proceso; sin ella, el
+// cliente la pide.
+export interface ClientTarget {
+  host: string;
+  port: number;
+  username: string;
+  database: string;
+  password: string | null;
+}
+
 // `cwd`: la carpeta SQL del perfil; sin ella (o si ya no existe), HOME.
-export function createTerminal(cols: number, rows: number, cwd: string | null, callbacks: TerminalCallbacks): Promise<TerminalInfo> {
+// Con `client`, en vez del shell corre el cliente del motor conectado.
+export function createTerminal(
+  cols: number,
+  rows: number,
+  cwd: string | null,
+  callbacks: TerminalCallbacks,
+  client: ClientTarget | null = null,
+): Promise<TerminalInfo> {
   const output = new Channel<ArrayBuffer>((bytes) => callbacks.output(new Uint8Array(bytes)));
   const exit = new Channel<number | null>((code) => callbacks.exit(code));
-  return invoke<TerminalInfo>("create_terminal", { cols, rows, cwd, output, exit });
+  return invoke<TerminalInfo>("create_terminal", { cols, rows, start: { cwd, client }, output, exit });
 }
 
 // Lo que produce xterm, tal cual. `binary`: lo de `onBinary`, un byte por

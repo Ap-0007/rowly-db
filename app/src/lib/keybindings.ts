@@ -27,6 +27,7 @@ export const TERMINAL_COMMANDS = new Set([
   "previous-tab",
   ...TAB_NUMBERS.map((n) => `go-to-tab-${n}`),
   "new-terminal-session",
+  "new-database-terminal",
   "close-terminal-session",
   "rename-query-console",
   "tile-console",

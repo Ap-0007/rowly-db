@@ -57,6 +57,40 @@ pub struct EngineDefinition {
     pub exact_text: ExactText,
     /// Sus lineas de version, como datos: `support/<motor>.json` (lines.rs).
     pub lines: &'static str,
+    /// El cliente de linea de comandos que abre la terminal conectada.
+    pub cli_client: CliClient,
+}
+
+/// Como abre la terminal una sesion del cliente del motor, ya conectada a la
+/// base (#107). `{host}`, `{port}`, `{user}` y `{database}` se reemplazan;
+/// un grupo de argumentos con `{database}` se omite si no hay base.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CliClient {
+    /// Los programas que sirven, en orden: el primero que este en el PATH.
+    pub programs: &'static [&'static str],
+    pub args: &'static [&'static [&'static str]],
+    /// La variable de entorno de la contraseña, solo para ese proceso.
+    pub password_env: &'static str,
+}
+
+impl CliClient {
+    /// Los argumentos para una conexion, en el orden de `args`.
+    pub fn arguments(&self, host: &str, port: u16, user: &str, database: &str) -> Vec<String> {
+        let port = port.to_string();
+        self.args
+            .iter()
+            .filter(|group| {
+                !database.is_empty() || !group.iter().any(|arg| arg.contains("{database}"))
+            })
+            .flat_map(|group| group.iter())
+            .map(|arg| {
+                arg.replace("{host}", host)
+                    .replace("{port}", &port)
+                    .replace("{user}", user)
+                    .replace("{database}", database)
+            })
+            .collect()
+    }
 }
 
 /// La expresion con el texto de una columna tal como lo lee el driver,
@@ -95,4 +129,56 @@ pub enum DoBlocks {
     /// Un bloque anonimo de codigo, cuyo efecto no se puede clasificar
     /// estaticamente (Postgres).
     Anonymous,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Dialect;
+
+    /// La terminal conectada (#107): cada motor abre su cliente con la
+    /// conexion; sin base, el argumento de la base no va.
+    #[test]
+    fn the_cli_client_gets_the_connection_and_skips_a_missing_database() {
+        let postgres = Dialect::Postgres.definition().cli_client;
+        assert_eq!(
+            postgres.arguments("db.local", 5433, "ana", "pagila"),
+            ["-h", "db.local", "-p", "5433", "-U", "ana", "-d", "pagila"]
+        );
+        assert_eq!(
+            postgres.arguments("db.local", 5433, "ana", ""),
+            ["-h", "db.local", "-p", "5433", "-U", "ana"]
+        );
+        let mysql = Dialect::MySql.definition().cli_client;
+        assert_eq!(
+            mysql.arguments("127.0.0.1", 3306, "root", "sakila"),
+            [
+                "--protocol=TCP",
+                "-h",
+                "127.0.0.1",
+                "-P",
+                "3306",
+                "-u",
+                "root",
+                "sakila"
+            ]
+        );
+        assert_eq!(
+            mysql
+                .arguments("127.0.0.1", 3306, "root", "")
+                .last()
+                .map(String::as_str),
+            Some("root")
+        );
+        for dialect in Dialect::ALL {
+            let client = dialect.definition().cli_client;
+            assert!(
+                !client.programs.is_empty() && !client.password_env.is_empty(),
+                "{dialect:?}"
+            );
+        }
+        assert_eq!(
+            Dialect::MariaDb.definition().cli_client.programs,
+            ["mariadb", "mysql"]
+        );
+    }
 }

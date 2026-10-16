@@ -1,6 +1,6 @@
 //! MySQL. MariaDB parte de estas mismas listas (dialects/mariadb.rs).
 
-use super::{DoBlocks, EngineDefinition, ExactText, InsertDefaults, RoutineBodies};
+use super::{CliClient, DoBlocks, EngineDefinition, ExactText, InsertDefaults, RoutineBodies};
 
 pub const DEFINITION: EngineDefinition = EngineDefinition {
     id: "mysql",
@@ -22,7 +22,22 @@ pub const DEFINITION: EngineDefinition = EngineDefinition {
     sql_mode_query: Some(SQL_MODE_QUERY),
     exact_text: EXACT_TEXT,
     lines: include_str!("../../../../support/mysql.json"),
+    cli_client: CliClient {
+        programs: &["mysql"],
+        args: CLI_ARGS,
+        password_env: "MYSQL_PWD",
+    },
 };
+
+// Por TCP, como la app: con `localhost` el cliente usaria el socket, que
+// puede ser otro servidor (uno en Docker publica solo el puerto).
+pub(super) const CLI_ARGS: &[&[&str]] = &[
+    &["--protocol=TCP"],
+    &["-h", "{host}"],
+    &["-P", "{port}"],
+    &["-u", "{user}"],
+    &["{database}"],
+];
 
 pub(super) const ROUTINE_KINDS: &[&str] = &["PROCEDURE", "FUNCTION", "TRIGGER", "EVENT"];
 pub(super) const SQL_MODE_QUERY: &str = "SELECT @@SESSION.sql_mode";

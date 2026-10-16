@@ -73,6 +73,8 @@ export const commandDefinitions: CommandDefinition[] = [
   // Solo con el foco en la terminal; fuera, la tecla sigue su camino.
   { id: "new-terminal-session", zone: "global", group: "general", defaultKeys: "Ctrl+Shift+T" },
   { id: "close-terminal-session", zone: "global", group: "general", defaultKeys: "Ctrl+Shift+W" },
+  // Abre la terminal si hace falta, con una sesion de psql/mysql conectada (#107).
+  { id: "new-database-terminal", zone: "global", group: "general", defaultKeys: "Ctrl+Shift+D" },
   { id: "execute-query", zone: "editor", group: "editor", defaultKeys: "Ctrl+Enter" },
   { id: "execute-script", zone: "editor", group: "editor", defaultKeys: "Ctrl+Shift+Enter" },
   // Solo toma la tecla mientras corre una consulta; si no, Esc sigue su

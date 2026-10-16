@@ -2,7 +2,7 @@
 //! es un motor con su identidad: donde difiere, lo dice aca.
 
 use super::mysql;
-use super::{DoBlocks, EngineDefinition, InsertDefaults, RoutineBodies};
+use super::{CliClient, DoBlocks, EngineDefinition, InsertDefaults, RoutineBodies};
 
 pub const DEFINITION: EngineDefinition = EngineDefinition {
     id: "mariadb",
@@ -25,6 +25,12 @@ pub const DEFINITION: EngineDefinition = EngineDefinition {
     sql_mode_query: Some(mysql::SQL_MODE_QUERY),
     exact_text: mysql::EXACT_TEXT,
     lines: include_str!("../../../../support/mariadb.json"),
+    cli_client: CliClient {
+        // MariaDB instala `mariadb` desde la 10.4; un cliente mas viejo, solo `mysql`.
+        programs: &["mariadb", "mysql"],
+        args: mysql::CLI_ARGS,
+        password_env: "MYSQL_PWD",
+    },
 };
 
 const UNPARSED: &[&[&str]] = &[

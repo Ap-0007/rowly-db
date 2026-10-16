@@ -1,6 +1,6 @@
 //! PostgreSQL.
 
-use super::{DoBlocks, EngineDefinition, ExactText, InsertDefaults, RoutineBodies};
+use super::{CliClient, DoBlocks, EngineDefinition, ExactText, InsertDefaults, RoutineBodies};
 
 pub const DEFINITION: EngineDefinition = EngineDefinition {
     id: "postgres",
@@ -30,6 +30,16 @@ pub const DEFINITION: EngineDefinition = EngineDefinition {
         as_is: &["bool", "boolean"],
     },
     lines: include_str!("../../../../support/postgres.json"),
+    cli_client: CliClient {
+        programs: &["psql"],
+        args: &[
+            &["-h", "{host}"],
+            &["-p", "{port}"],
+            &["-U", "{user}"],
+            &["-d", "{database}"],
+        ],
+        password_env: "PGPASSWORD",
+    },
 };
 
 const UNPARSED_WRITES: &[&[&str]] = &[
