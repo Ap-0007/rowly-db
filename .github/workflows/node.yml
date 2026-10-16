@@ -100,5 +100,5 @@ jobs:
       - name: Las versiones verificadas son las de la ventana de soporte (SQL_ENGINE §5.2)
         run: node tools/test-dbs/window.mjs
 
-      - name: La release solo se publica con la evidencia de su commit; el planner de CI
-        run: node --test tools/test-dbs/*.test.mjs tools/ci/*.test.mjs
+      - name: Evidencia de la release, latest.json y el planner de CI
+        run: node --test tools/test-dbs/*.test.mjs tools/ci/*.test.mjs tools/release/*.test.mjs
