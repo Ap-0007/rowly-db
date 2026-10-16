@@ -4,35 +4,38 @@ name: SQL engine
 # cada version exacta declarada verificada (`verified` de
 # tools/test-dbs/lines.json) y la demostracion de lineas (D7/D8) en cada
 # probe. La matriz sale de lines.json: no hay una segunda lista de versiones.
+#
+# ci.yml la llama con los motores que eligio el planner (tools/ci/areas.json)
+# y el reporte dice ese alcance; release.yml la llama con todos los motores y
+# las semillas de la release, y su `verify` rechaza una evidencia parcial.
+#
+# Las suites se compilan una sola vez (job `build`): cada job de version y de
+# lineas baja los mismos binarios y los corre contra su servidor, sin
+# compilar nada.
 
 on:
-  pull_request:
-    paths:
-      - "crates/**"
-      - "app/src-tauri/**"
-      - "app/src/lib/engines/**"
-      - "app/src/lib/sql*.ts"
-      - "tests/sql/**"
-      - "support/**"
-      - "tools/test-dbs/**"
-      - "Cargo.lock"
-      - ".github/workflows/sql-engine.yml"
-  push:
-    branches: [main, develop]
-  workflow_dispatch:
-    inputs:
-      fuzz_cases:
-        description: "Casos de fuzz por motor (SQL_ENGINE §7: 4000 por PR de motor)"
-        default: "4000"
-  # La release la corre sobre su propio commit (release.yml).
   workflow_call:
     inputs:
+      ref:
+        type: string
+        default: ""
+      engines:
+        description: 'Motores (JSON, p. ej. ["postgres"]) o * para todos'
+        type: string
+        default: "*"
       fuzz_cases:
+        description: "Casos de fuzz por motor y semilla (SQL_ENGINE §7: 4000)"
         type: string
         default: "4000"
+      fuzz_seeds:
+        description: "Semillas del fuzz, separadas por comas (la release: 0,1,2)"
+        type: string
+        default: "0"
 
 env:
   CARGO_TERM_COLOR: always
+  SUITES: safety analysis generated contract filters
+  LINE_SUITES: version_lines
 
 defaults:
   run:
@@ -46,21 +49,70 @@ jobs:
     outputs:
       verified: ${{ steps.read.outputs.verified }}
       engines: ${{ steps.read.outputs.engines }}
+      scope: ${{ steps.read.outputs.scope }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - id: read
+        env:
+          ENGINES: ${{ inputs.engines }}
         run: |
           python3 - >> "$GITHUB_OUTPUT" <<'PY'
-          import json
+          import json, os
           d = json.load(open("tools/test-dbs/lines.json"))
-          verified = [{"engine": e, "version": v["version"]} for e, vs in d["verified"].items() for v in vs]
+          requested = os.environ["ENGINES"]
+          engines = list(d["engines"]) if requested == "*" else json.loads(requested)
+          unknown = [e for e in engines if e not in d["engines"]]
+          if not engines or unknown:
+              raise SystemExit(f"motores invalidos: {unknown or 'ninguno'}")
+          verified = [{"engine": e, "version": v["version"]} for e, vs in d["verified"].items() if e in engines for v in vs]
           print("verified=" + json.dumps(verified))
-          print("engines=" + json.dumps(list(d["engines"])))
+          print("engines=" + json.dumps(engines))
+          # Vacio: todos los motores. Si no, el alcance que el reporte declara.
+          print("scope=" + ("" if requested == "*" else ",".join(engines)))
           PY
+
+  build:
+    name: Compilar las suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@1.90
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: server-tests
+      - name: Compilar sin correr
+        run: |
+          args=()
+          for suite in $SUITES $LINE_SUITES; do args+=(--test "$suite"); done
+          cargo test -p rowly-server-tests --locked --no-run "${args[@]}" --message-format=json > build.jsonl
+      # Un binario por suite, con un manifiesto del commit y el toolchain que
+      # los produjo: un job de version no corre binarios de otro commit.
+      - name: Empaquetar los binarios
+        run: |
+          mkdir -p suites
+          for suite in $SUITES $LINE_SUITES; do
+            path=$(jq -r --arg suite "$suite" 'select(.reason == "compiler-artifact" and .profile.test and .target.name == $suite and .executable != null) | .executable' build.jsonl)
+            test "$(wc -l <<< "$path")" = 1 && test -x "$path"
+            cp "$path" "suites/$suite"
+          done
+          jq -n --arg commit "$(git rev-parse HEAD)" --arg toolchain "$(rustc -V)" --arg target "$(rustc -vV | sed -n 's/^host: //p')" \
+            --arg workspace "$GITHUB_WORKSPACE" '{commit: $commit, toolchain: $toolchain, target: $target, workspace: $workspace}' > suites/manifest.json
+          cat suites/manifest.json
+          tar -czf server-tests.tar.gz suites
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-tests
+          path: server-tests.tar.gz
+          retention-days: 1
 
   real:
     name: ${{ matrix.engine }} ${{ matrix.version }}
-    needs: matrix
+    needs: [matrix, build]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -69,7 +121,8 @@ jobs:
         include: ${{ fromJSON(needs.matrix.outputs.verified) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+        with:
+          ref: ${{ inputs.ref }}
       # G2 escribe los CALL con el autocompletado real (TypeScript, vitest).
       - uses: actions/setup-node@v4
         with:
@@ -79,20 +132,40 @@ jobs:
       - name: npm ci
         working-directory: app
         run: npm ci
-      - name: Compilar la suite
-        run: cargo test -p rowly-server-tests --test safety --test analysis --test generated --test contract --test filters --locked --no-run
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-tests
+      - name: Binarios de este commit
+        run: |
+          tar -xzf server-tests.tar.gz -C "$RUNNER_TEMP"
+          jq -e --arg commit "$(git rev-parse HEAD)" --arg workspace "$GITHUB_WORKSPACE" \
+            '.commit == $commit and .workspace == $workspace' "$RUNNER_TEMP/suites/manifest.json"
       - name: Servidor ${{ matrix.engine }} ${{ matrix.version }} con Sakila/Pagila
         run: tools/test-dbs/up.sh "${{ matrix.engine }}=${{ matrix.version }}"
       - name: Origen de la evidencia
         run: >-
           printf '{"commit":"%s","run":"%s","attempt":"%s","job":"%s","date":"%s"}\n'
           "$(git rev-parse HEAD)" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "real-${{ matrix.engine }}-${{ matrix.version }}" "$(date -u +%FT%TZ)" > origin.json
+      # Como cargo test: cada suite desde el directorio del paquete y con
+      # CARGO_MANIFEST_DIR. Corren todas aunque falle una; el log tiene el
+      # resultado de cada una, que evidence.mjs cuenta.
       - name: Matriz real y contrato de los drivers (SQL_ENGINE §6)
+        working-directory: crates/server-tests
         env:
           ROWLY_ENGINES: ${{ matrix.engine }}
-          ROWLY_FUZZ_CASES: ${{ inputs.fuzz_cases || '4000' }}
+          ROWLY_FUZZ_CASES: ${{ inputs.fuzz_cases }}
+          ROWLY_FUZZ_SEEDS: ${{ inputs.fuzz_seeds }}
           ROWLY_EVIDENCE: evidence.jsonl
-        run: cargo test -p rowly-server-tests --test safety --test analysis --test generated --test contract --test filters --locked -- --ignored --test-threads=1 2>&1 | tee real.log
+        run: |
+          export CARGO_MANIFEST_DIR="$PWD"
+          (
+            status=0
+            for suite in $SUITES; do
+              echo "     Running tests/$suite.rs"
+              "$RUNNER_TEMP/suites/$suite" --ignored --test-threads=1 || status=1
+            done
+            exit "$status"
+          ) 2>&1 | tee "$GITHUB_WORKSPACE/real.log"
       - name: Evidencia
         if: always()
         uses: actions/upload-artifact@v4
@@ -105,7 +178,7 @@ jobs:
 
   lines:
     name: Lineas ${{ matrix.engine }} (D7/D8)
-    needs: matrix
+    needs: [matrix, build]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -114,9 +187,16 @@ jobs:
         engine: ${{ fromJSON(needs.matrix.outputs.engines) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
-      - name: Compilar la suite
-        run: cargo test -p rowly-server-tests --test version_lines --locked --no-run
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-tests
+      - name: Binarios de este commit
+        run: |
+          tar -xzf server-tests.tar.gz -C "$RUNNER_TEMP"
+          jq -e --arg commit "$(git rev-parse HEAD)" --arg workspace "$GITHUB_WORKSPACE" \
+            '.commit == $commit and .workspace == $workspace' "$RUNNER_TEMP/suites/manifest.json"
       - name: Un servidor por extremo de cada linea
         run: tools/test-dbs/lines.sh up "${{ matrix.engine }}"
       - name: Origen de la evidencia
@@ -124,9 +204,12 @@ jobs:
           printf '{"commit":"%s","run":"%s","attempt":"%s","job":"%s","date":"%s"}\n'
           "$(git rev-parse HEAD)" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "lines-${{ matrix.engine }}" "$(date -u +%FT%TZ)" > origin.json
       - name: Demostracion de lineas
+        working-directory: crates/server-tests
         env:
           ROWLY_ENGINES: ${{ matrix.engine }}
-        run: cargo test -p rowly-server-tests --test version_lines --locked -- --ignored --test-threads=1 2>&1 | tee lines.log
+        run: |
+          export CARGO_MANIFEST_DIR="$PWD"
+          "$RUNNER_TEMP/suites/version_lines" --ignored --test-threads=1 2>&1 | tee "$GITHUB_WORKSPACE/lines.log"
       - name: Registro
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,10 +223,12 @@ jobs:
     name: Evidencia por version
     # Tambien cuando falla un job: el reporte dice que version quedo incompleta.
     needs: [matrix, real, lines]
-    if: always()
+    if: always() && needs.matrix.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/download-artifact@v4
         with:
           pattern: real-*
@@ -153,7 +238,9 @@ jobs:
           pattern: lines-*
           path: evidence
       - name: Cada version verificada y cada linea con su evidencia completa, de este commit
-        run: node tools/test-dbs/evidence.mjs evidence --out verification.json
+        env:
+          SCOPE: ${{ needs.matrix.outputs.scope }}
+        run: node tools/test-dbs/evidence.mjs evidence ${SCOPE:+--engines "$SCOPE"} --out verification.json
       - uses: actions/upload-artifact@v4
         with:
           name: verification
