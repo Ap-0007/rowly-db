@@ -753,10 +753,15 @@ mod tests {
             "tools/test-dbs/docker-compose.yml",
         ] {
             let text = std::fs::read_to_string(root.join(file)).unwrap();
-            // `image: X` o, en el compose, `image: ${VARIABLE:-X}`.
+            // `image: X`, en el compose `image: ${VARIABLE:-X}`, y en un
+            // workflow que levanta los servidores a mano `MYSQL_IMAGE: X`.
             let images: Vec<&str> = text
                 .lines()
-                .filter_map(|line| line.trim().strip_prefix("image:"))
+                .filter_map(|line| {
+                    let line = line.trim();
+                    line.strip_prefix("image:")
+                        .or_else(|| line.split_once("_IMAGE:").map(|(_, image)| image))
+                })
                 .map(|image| {
                     let image = image.trim();
                     image
