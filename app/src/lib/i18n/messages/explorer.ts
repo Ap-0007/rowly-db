@@ -32,6 +32,8 @@ export default defineMessages({
     "unencrypted.fellBack":
       "Conexión sin cifrar: el servidor ofrece TLS con un cifrado que Rowly DB no admite. Usa SSL «Requerido» en la conexión para que falle en vez de conectar así.",
     "unencrypted.noTls": "Conexión sin cifrar: el servidor no tiene TLS habilitado.",
+    "databases.pick": "Cambiar de base de datos",
+    "databases.menu": "Bases de datos",
     "schemas.pick": "Elegir schemas visibles",
     "schemas.loading": "Cargando schemas",
     "schemas.count": "{visible} de {total}",
@@ -69,6 +71,8 @@ export default defineMessages({
     "unencrypted.fellBack":
       "Unencrypted connection: the server offers TLS with a cipher Rowly DB doesn’t support. Set SSL to “Required” on the connection so it fails instead of connecting this way.",
     "unencrypted.noTls": "Unencrypted connection: the server doesn’t have TLS enabled.",
+    "databases.pick": "Switch database",
+    "databases.menu": "Databases",
     "schemas.pick": "Choose visible schemas",
     "schemas.loading": "Loading schemas",
     "schemas.count": "{visible} of {total}",
@@ -106,6 +110,8 @@ export default defineMessages({
     "unencrypted.fellBack":
       "Conexão sem criptografia: o servidor oferece TLS com uma cifra que o Rowly DB não suporta. Use SSL “Obrigatório” na conexão para que ela falhe em vez de conectar assim.",
     "unencrypted.noTls": "Conexão sem criptografia: o servidor não tem TLS habilitado.",
+    "databases.pick": "Trocar de banco de dados",
+    "databases.menu": "Bancos de dados",
     "schemas.pick": "Escolher schemas visíveis",
     "schemas.loading": "Carregando schemas",
     "schemas.count": "{visible} de {total}",
@@ -143,6 +149,8 @@ export default defineMessages({
     "unencrypted.fellBack":
       "Connexion non chiffrée : le serveur propose TLS avec un chiffrement que Rowly DB ne prend pas en charge. Choisissez SSL « Requis » dans la connexion pour qu’elle échoue au lieu de se connecter ainsi.",
     "unencrypted.noTls": "Connexion non chiffrée : TLS n’est pas activé sur le serveur.",
+    "databases.pick": "Changer de base de données",
+    "databases.menu": "Bases de données",
     "schemas.pick": "Choisir les schémas visibles",
     "schemas.loading": "Chargement des schémas",
     "schemas.count": "{visible} sur {total}",
@@ -180,6 +188,8 @@ export default defineMessages({
     "unencrypted.fellBack":
       "Unverschlüsselte Verbindung: Der Server bietet TLS mit einer Verschlüsselung an, die Rowly DB nicht unterstützt. Stell SSL in der Verbindung auf „Erforderlich“, damit sie fehlschlägt, statt so zu verbinden.",
     "unencrypted.noTls": "Unverschlüsselte Verbindung: Auf dem Server ist TLS nicht aktiviert.",
+    "databases.pick": "Datenbank wechseln",
+    "databases.menu": "Datenbanken",
     "schemas.pick": "Sichtbare Schemas auswählen",
     "schemas.loading": "Schemas werden geladen",
     "schemas.count": "{visible} von {total}",

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { ArrowLeft, Plus, X } from "@lucide/svelte";
+  import { ArrowLeft, Database, Plus, X } from "@lucide/svelte";
   import { tabScroll } from "$lib/tabScroll";
   import { moveItem, reorderable } from "$lib/reorder";
   import { tabEnter, tabExit } from "$lib/motion";
@@ -18,15 +18,20 @@
   import { registerCommands } from "$lib/workspace/commands";
   import { registerTabCommands } from "$lib/workspace/tabCommands";
 
-  let { visible, profileId, onerror, onback, backKeys = "" }: {
+  let { visible, profileId, onerror, onback, backKeys = "", databaseKeys = "", start = "shell" }: {
     visible: boolean;
     profileId: string;
     onerror: (message: string) => void;
     onback: () => void;
     backKeys?: string;
+    // El atajo de la terminal conectada, para su tooltip.
+    databaseKeys?: string;
+    // La primera sesion al abrirse: el shell o el cliente de la base (#107).
+    start?: "shell" | "database";
   } = $props();
 
-  type Session = { key: string; label: string; info: TerminalInfo | null; closing?: boolean };
+  // `database`: corre el cliente del motor conectado, no el shell (#107).
+  type Session = { key: string; label: string; info: TerminalInfo | null; closing?: boolean; database?: boolean };
   let sessions = $state<Session[]>([]);
   let layout = $state<TabGroups>(emptyGroups("t0"));
   let root: HTMLDivElement;
@@ -67,6 +72,9 @@
 
   export function focus() { if (active) views[active]?.focus(); }
 
+  // Otra sesion con el cliente de la base, en el grupo enfocado.
+  export function addDatabase() { add(layout.focus, true); }
+
   function select(key: string) {
     if (!keys.includes(key)) return;
     layout = choose(layout, key);
@@ -86,11 +94,12 @@
     return mosaic?.tileElement(next) ?? null;
   }
 
-  function add(group = layout.focus): string {
+  function add(group = layout.focus, database = false): string {
     opened = open.length === 0 ? 1 : opened + 1;
-    const label = opened === 1 ? $t("workspace.terminal.local") : `${$t("workspace.terminal.local")} (${opened})`;
+    const name = $t(database ? "workspace.terminal.database" : "workspace.terminal.local");
+    const label = opened === 1 ? name : `${name} (${opened})`;
     const key = String(nextKey++);
-    sessions = [...sessions, { key, label, info: null }];
+    sessions = [...sessions, { key, label, info: null, database }];
     arrange({ ...layout, focus: group, member: { ...layout.member, [key]: group }, selected: { ...layout.selected, [group]: key } });
     return key;
   }
@@ -203,7 +212,7 @@
   });
 
   $effect(() => {
-    if (visible) untrack(() => open.length === 0 && add());
+    if (visible) untrack(() => open.length === 0 && add(layout.focus, start === "database"));
     else pickerOpen = false;
   });
 </script>
@@ -255,6 +264,10 @@
           <button type="button" class="strip-button" aria-label={$t("workspace.terminal.new")} use:tooltip={$t("workspace.terminal.new")} onclick={() => add(group)}>
             <Plus size={13} aria-hidden="true" />
           </button>
+          <button type="button" class="strip-button" aria-label={$t("workspace.terminal.newDatabase")}
+            use:tooltip={{ label: $t("workspace.terminal.newDatabase"), shortcut: databaseKeys }} onclick={() => add(group, true)}>
+            <Database size={13} aria-hidden="true" />
+          </button>
           <button type="button" class="strip-button back" aria-label={$t("workspace.terminal.back", { keys: backKeys })}
             use:tooltip={$t("workspace.terminal.back", { keys: backKeys })} onclick={onback}>
             <ArrowLeft size={14} aria-hidden="true" />
@@ -275,7 +288,7 @@
     <div class="session-slot" use:sessionMount={bodies[layout.member[session.key]]}>
       <TerminalSession bind:this={views[session.key]}
         visible={visible && !session.closing && layout.selected[layout.member[session.key]] === session.key}
-        focused={visible && active === session.key} {profileId}
+        focused={visible && active === session.key} {profileId} database={session.database}
         oninfo={(info) => (session.info = info)} onexit={() => close(session.key)} {onerror} />
     </div>
   {/each}

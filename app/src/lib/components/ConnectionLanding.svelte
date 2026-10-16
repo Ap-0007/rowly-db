@@ -208,7 +208,7 @@
                         {/if}
                       </span>
                       <span class="meta">
-                        {driver.name}<span class="sep">·</span>{profile.database}@{shortEndpoint(profile)}
+                        {driver.name}<span class="sep">·</span>{profile.database || $t("connections.form.databaseAll")}@{shortEndpoint(profile)}
                       </span>
                     </span>
                   </button>
@@ -253,7 +253,7 @@
                       <DriverLogo driver={profile.driver} size={13} />
                       {driver.name}
                     </span>
-                    <span class="row-database">{profile.database}</span>
+                    <span class="row-database">{profile.database || $t("connections.form.databaseAll")}</span>
                     <code class="endpoint">{endpoint(profile)}</code>
                   </button>
                   <div class="row-corner">

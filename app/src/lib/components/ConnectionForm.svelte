@@ -104,7 +104,6 @@
     host?: MessageKey;
     port?: MessageKey;
     username?: MessageKey;
-    database?: MessageKey;
   }>({});
 
   const busy = $derived($connection.connecting || testing || credentialLoading || saving);
@@ -200,7 +199,6 @@
 
     if (!name.trim()) nextErrors.name = "connections.form.error.name";
     if (!host.trim()) nextErrors.host = "connections.form.error.host";
-    if (!database.trim()) nextErrors.database = "connections.form.error.database";
     if (!username.trim()) nextErrors.username = "connections.form.error.username";
 
     const portValue = Number(port);
@@ -457,10 +455,9 @@
           id="database"
           name="database"
           bind:value={database}
-          error={errors.database && $t(errors.database)}
+          placeholder={$t("connections.form.databaseAll")}
           autocomplete="off"
           orientation="horizontal"
-          required
           disabled={busy}
         />
       </section>

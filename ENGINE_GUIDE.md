@@ -76,6 +76,7 @@ Every field is required: there is no `Default`. Decide each one for the new engi
 | `select_into_variable_lists` | `SELECT … INTO a, b` into several variables | analyzer |
 | `sql_mode_query` | The query that tells whether the session uses `NO_BACKSLASH_ESCAPES` | session mode → guard ⚠ |
 | `lines` | `include_str!` of `support/<id>.json` | lines (step 6) |
+| `cli_client` | The command-line client a connected terminal opens: programs tried in order, argument groups with `{host}`, `{port}`, `{user}`, `{database}` (a group with `{database}` is dropped without a database) and the password's environment variable | terminal |
 
 A mechanism the new engine needs and no field expresses becomes **a new field or a new variant** of the definition, used by shared code and tested on every existing engine. Never an `if` on the engine: the boundary tests reject it (ARCHITECTURE, "Boundaries that check themselves").
 
@@ -107,7 +108,7 @@ Rowly DB uses `sqlparser`. Pick its dialect for the engine (`parser`). Then:
 
 A driver is a crate in `crates/drivers/<protocol>` that implements `DbConnector` (`crates/driver-core/src/lib.rs`).
 
-Required: `connect`, `server`, `tls_status`, `list_schemas`, `current_schema`, `introspect_schema`, `table_definition`, `execute_query`, `execute_in_transaction`, `stream_query`. With a default you may override: `list_tables`, `execute_query_cancellable`, `console_epoch`, `cancel_query`.
+Required: `connect`, `server`, `tls_status`, `list_schemas`, `current_schema`, `introspect_schema`, `table_definition`, `execute_query`, `execute_in_transaction`, `stream_query`. With a default you may override: `list_tables`, `execute_query_cancellable`, `console_epoch`, `cancel_query`, and `list_databases` with `current_database` (only for an engine where each database is its own connection, like PostgreSQL: they give the database picker of a profile without a database).
 
 Rules the contract documents and the tests check:
 

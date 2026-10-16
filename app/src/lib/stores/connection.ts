@@ -14,6 +14,7 @@ import { toConnectionFailure } from "$lib/connections/connectionErrors";
 import { forgetQueryHistory } from "./queryHistory";
 import { getDriver, type ConnectionDriver } from "$lib/connections";
 import { forgetConnectionPassword, loadConnectionPassword } from "$lib/credentials";
+import type { ClientTarget } from "$lib/terminal";
 import { connectionProfiles, removeConnectionProfile, type ConnectionProfile } from "./connectionProfiles";
 import { forgetProfileConsoles } from "./queryConsoles";
 import { closeSqlFolder } from "./sqlFolders";
@@ -100,6 +101,46 @@ function saveVisibleSchemas(profileId: string, schemas: string[]): void {
   }
 }
 
+// Un perfil sin base (#105) en un motor donde cada base es otra conexion
+// (PostgreSQL) recuerda la base elegida en el explorador; con ella se
+// vuelve a conectar. Un perfil con base fija no la usa nunca.
+const PROFILE_DATABASE_KEY = "khipu:profile-database:v1";
+
+function loadDatabaseChoices(): Record<string, string> {
+  if (!browser) return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PROFILE_DATABASE_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDatabaseChoice(profileId: string, database: string | null): void {
+  if (!browser) return;
+  try {
+    const choices = loadDatabaseChoices();
+    if (database) choices[profileId] = database;
+    else delete choices[profileId];
+    localStorage.setItem(PROFILE_DATABASE_KEY, JSON.stringify(choices));
+  } catch {
+    // Sin almacenamiento, se vuelve a la base por defecto del motor.
+  }
+}
+
+// La base con la que se conecta el perfil: la suya, o la elegida.
+export function profileDatabase(profile: ConnectionProfile): string {
+  return profile.database.trim() || loadDatabaseChoices()[profile.id] || "";
+}
+
+// Los schemas visibles son de una base: con la base elegida en el
+// explorador, cada una guarda los suyos.
+function visibleSchemasKey(profileId: string): string {
+  const profile = get(connectionProfiles).find((candidate) => candidate.id === profileId);
+  const chosen = profile && !profile.database.trim() ? loadDatabaseChoices()[profileId] : undefined;
+  return chosen ? `${profileId}@${chosen}` : profileId;
+}
+
 // Los avisos de cada schema (una categoria que no se pudo leer, una version
 // no soportada) llegan como mensajes del backend: se traducen al recibirlos.
 function withTranslatedWarnings(explorer: DatabaseExplorer): DatabaseExplorer {
@@ -132,7 +173,7 @@ export async function setVisibleSchemas(schemas: string[]): Promise<void> {
     catalogTables.set(tables);
     if (profileId) {
       saveVisibleSchemas(
-        profileId,
+        visibleSchemasKey(profileId),
         explorer.schemas.map((objects) => objects.schema).filter((name) => name !== explorer.defaultSchema),
       );
     }
@@ -255,7 +296,7 @@ export async function connectToProfile(profile: ConnectionProfile): Promise<Conn
   const tableCount = await connect(driver.id, {
     host: profile.host,
     port: profile.port,
-    database: profile.database,
+    database: profileDatabase(profile),
     username: profile.username,
     password,
     tlsMode: profile.tlsMode,
@@ -269,7 +310,7 @@ export async function connectToProfile(profile: ConnectionProfile): Promise<Conn
 
   // Los schemas extra se cargan despues de marcar la conexion como lista:
   // el arbol ya muestra el schema por defecto mientras tanto.
-  const savedSchemas = loadVisibleSchemaSelections()[profile.id];
+  const savedSchemas = loadVisibleSchemaSelections()[visibleSchemasKey(profile.id)];
   if (Array.isArray(savedSchemas) && savedSchemas.length > 0) {
     void setVisibleSchemas(savedSchemas).catch(() => {
       // Si fallan (p.ej. se borraron del servidor), queda el por defecto.
@@ -322,9 +363,40 @@ async function releaseBackendConnection(): Promise<void> {
   }
 }
 
+// La conexion del perfil activo para el cliente de una terminal conectada
+// (#107): la base en que esta el explorador (o la del perfil) y la
+// contraseña, si el perfil la guarda.
+export async function databaseClientTarget(profileId: string): Promise<ClientTarget> {
+  const profile = get(connectionProfiles).find((candidate) => candidate.id === profileId);
+  if (!profile) throw new Error(`perfil ${profileId} desconocido`);
+  let password: string | null;
+  try {
+    password = await loadConnectionPassword(profile.id, profile.passwordPolicy);
+  } catch {
+    password = null;
+  }
+  return {
+    host: profile.host,
+    port: profile.port,
+    username: profile.username,
+    database: get(databaseExplorer)?.database ?? profileDatabase(profile),
+    password,
+  };
+}
+
+// Elegir otra base en el explorador (#105): se vuelve a conectar el mismo
+// perfil a ella, como al recargar.
+export async function switchDatabase(profile: ConnectionProfile, database: string): Promise<ConnectResult> {
+  saveDatabaseChoice(profile.id, database);
+  return connectToProfile(profile);
+}
+
 export async function deleteConnectionProfile(profileId: string): Promise<void> {
   await forgetConnectionPassword(profileId);
-  saveVisibleSchemas(profileId, []);
+  for (const key of Object.keys(loadVisibleSchemaSelections())) {
+    if (key === profileId || key.startsWith(`${profileId}@`)) saveVisibleSchemas(key, []);
+  }
+  saveDatabaseChoice(profileId, null);
   if (loadLastProfileId() === profileId) saveLastProfileId(null);
   closeSqlFolder(profileId);
   forgetProfileConsoles(profileId);

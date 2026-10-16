@@ -23,6 +23,7 @@
     pendingEdit,
     reset,
     setVisibleSchemas,
+    switchDatabase,
   } from "$lib/stores/connection";
   import { connectionProfiles } from "$lib/stores/connectionProfiles";
   import { shortcuts } from "$lib/stores/shortcuts";
@@ -102,7 +103,7 @@
   const activeProfile = $derived($connectionProfiles.find((profile) => profile.id === $connection.profileId));
   // Misma convencion "schema@host" que dataSourceLabel en Workspace.svelte.
   const connectionLabel = $derived(
-    activeProfile ? `${activeProfile.database || activeProfile.name}@${activeProfile.host}` : "",
+    activeProfile ? `${$databaseExplorer?.database || activeProfile.database || activeProfile.name}@${activeProfile.host}` : "",
   );
   let { children }: { children: Snippet } = $props();
 
@@ -187,6 +188,18 @@
     const result = await connectToProfile(profile);
     refreshingTables = false;
 
+    if (!result.ok) {
+      pendingEdit.set({ profile, error: result.reason === "connect-failed" ? result.error : null });
+    }
+  }
+
+  // Otra base en el explorador (#105), para un perfil sin base fija.
+  async function handleDatabaseChange(database: string) {
+    const profile = activeProfile;
+    if (!profile || refreshingTables) return;
+    refreshingTables = true;
+    const result = await switchDatabase(profile, database);
+    refreshingTables = false;
     if (!result.ok) {
       pendingEdit.set({ profile, error: result.reason === "connect-failed" ? result.error : null });
     }
@@ -491,6 +504,7 @@
           onopenfolder={() => void handleOpenFolder()}
           onopentable={(schema, name) => openTableConsole(profileId, schema, name)}
           onschemaschange={(schemas) => void setVisibleSchemas(schemas).catch(() => {})}
+          ondatabasechange={activeProfile && !activeProfile.database.trim() ? handleDatabaseChange : undefined}
         />
         </div>
         {#if sqlFolder}

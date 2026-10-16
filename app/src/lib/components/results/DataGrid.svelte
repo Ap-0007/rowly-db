@@ -13,6 +13,7 @@
   import type { FindMatch } from "$lib/results/gridFind";
   import { CHUNK_ROWS, GROUP_COLS, chunkWindow, groupWindow, rowAtVisual, type ChunkWindow } from "$lib/results/gridWindow";
   import { onePerFrame } from "$lib/onePerFrame";
+  import { clampToBody, edgeScrollStep } from "$lib/results/gridAutoScroll";
   import { NAVIGATION_KEYS, navigationTarget, type GridBounds, type GridCell } from "$lib/results/gridNavigation";
   import { numpadText } from "$lib/numpadKeys";
   import {
@@ -26,7 +27,12 @@
   } from "$lib/results/gridClipboard";
   import {
     EMPTY_EDITS,
+    clearedCell,
     originalValue,
+    resolveCell,
+    sameValue,
+    typedCell,
+    type CellInput,
     type CellValue,
     type PendingEdits,
     type ResultEditInfo,
@@ -73,7 +79,7 @@
     oncommitcell?: (row: number, col: number, value: CellValue) => void;
     // Editar con varias celdas seleccionadas: el valor va a todas (menos a
     // las filas `hidden`, ocultas por "Filtrar filas").
-    onfillcells?: (ranges: RowRange[], value: CellValue, hidden: ReadonlySet<number> | null) => void;
+    onfillcells?: (ranges: RowRange[], value: CellInput, hidden: ReadonlySet<number> | null) => void;
     oneditblocked?: (reason: string) => void;
     onselectionchange?: (range: RowRange | null) => void;
     // Filas, celdas y suma de la seleccion (results/gridSelectionSummary.ts), para
@@ -879,6 +885,13 @@
       requestEdit(row, col, typed);
       return;
     }
+    // Supr deja las celdas en NULL, o en DEFAULT en una fila nueva cuya
+    // columna lo tiene (#104). Ctrl+Supr sigue siendo eliminar la fila.
+    if (event.key === "Delete" && !mod && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      clearCells(row, col);
+      return;
+    }
     if (event.key === "Backspace" && !mod && !event.altKey) {
       event.preventDefault();
       if (!fillRangesFor(row, col)) selectCell(row, col);
@@ -1073,13 +1086,14 @@
     const targets = fillTargets;
     fillTargets = null;
     if (commit && targets && (editTyped || editValue !== editStartValue)) {
-      onfillcells(targets, { kind: "text", value: editValue }, hiddenRows);
+      onfillcells(targets, typedCell(editValue), hiddenRows);
       for (const range of targets) addEffect(range, "commit");
     } else if (commit) {
       const previous = valueAt(current.row, current.col);
-      const unchanged = previous.kind === "text" ? previous.value === editValue : editValue === "";
+      const next = cellValueFor(typedCell(editValue), current.row, current.col);
+      const unchanged = previous.kind === "text" || next.kind !== "text" ? sameValue(previous, next) : editValue === "";
       if (!unchanged) {
-        oncommitcell(current.row, current.col, { kind: "text", value: editValue });
+        oncommitcell(current.row, current.col, next);
         addEffect({ minRow: current.row, maxRow: current.row, minCol: current.col, maxCol: current.col }, "commit");
       }
     }
@@ -1088,6 +1102,31 @@
       return;
     }
     if (refocus) void tick().then(() => cellElement(current.row, current.col)?.focus({ preventScroll: true }));
+  }
+
+  // Lo que una regla (NULL escrito, Supr) da en una celda concreta.
+  function cellValueFor(input: CellInput, row: number, col: number): CellValue {
+    const column = editInfo?.columns[col];
+    return column ? resolveCell(input, column, row >= rows.length) : typeof input === "function" ? { kind: "null" } : input;
+  }
+
+  // Supr: la seleccion (o la celda) a NULL / DEFAULT, sin abrir el editor.
+  function clearCells(row: number, col: number) {
+    const blocked = editableColumn(row, col);
+    if (blocked) {
+      oneditblocked(blocked);
+      return;
+    }
+    const targets = fillRangesFor(row, col);
+    if (targets) {
+      onfillcells(targets, clearedCell(), hiddenRows);
+      for (const range of targets) addEffect(range, "commit");
+      return;
+    }
+    const next = cellValueFor(clearedCell(), row, col);
+    if (sameValue(valueAt(row, col), next)) return;
+    oncommitcell(row, col, next);
+    addEffect({ minRow: row, maxRow: row, minCol: col, maxCol: col }, "commit");
   }
 
   function setEditingNull() {
@@ -1117,6 +1156,12 @@
     const current = editing;
     if (!current) return;
     const mod = event.ctrlKey || event.metaKey || event.altKey;
+    // Ctrl+Shift+N: NULL, como el boton de la esquina (#104).
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.code === "KeyN") {
+      event.preventDefault();
+      setEditingNull();
+      return;
+    }
     if (event.key === "Enter" && !mod) {
       event.preventDefault();
       finishEditing(true);
@@ -1194,7 +1239,10 @@
   // Un solo listener por tipo de evento en el <tbody> en vez de tres por
   // celda: la fila/columna salen de la posicion de la celda en la tabla.
   function cellFromEvent(event: Event): { row: number; col: number } | null {
-    const target = event.target;
+    return cellFromTarget(event.target);
+  }
+
+  function cellFromTarget(target: EventTarget | null): { row: number; col: number } | null {
     const cell = target instanceof Element ? target.closest("td") : null;
     const row = cell?.parentElement;
     const section = row?.parentElement;
@@ -1850,6 +1898,49 @@
     return () => window.removeEventListener("pointerup", onGlobalPointerUp);
   });
 
+  // Arrastrando fuera del area de celdas, la vista sigue de largo y la
+  // seleccion crece hasta la celda que queda bajo el puntero. pointerover no
+  // sirve aqui: con el mouse quieto fuera del grid no llega ningun evento.
+  $effect(() => {
+    if (!isDragSelecting) return;
+    let x = 0;
+    let y = 0;
+    let frame = 0;
+    let moved = false;
+    function onMove(event: PointerEvent) {
+      moved = true;
+      x = event.clientX;
+      y = event.clientY;
+    }
+    function tick() {
+      frame = requestAnimationFrame(tick);
+      const el = viewportEl;
+      if (!el || !selection || !moved) return;
+      const rect = el.getBoundingClientRect();
+      const left = rect.left + rowNumberWidth;
+      const top = rect.top + headerHeight;
+      const dx = edgeScrollStep(x, left, rect.right);
+      const dy = edgeScrollStep(y, top, rect.bottom);
+      if (dx === 0 && dy === 0) return;
+      el.scrollBy({ left: dx, top: dy });
+      const inset = 12;
+      const target = document.elementFromPoint(
+        clampToBody(x, left, rect.right, inset),
+        clampToBody(y, top, rect.bottom, inset),
+      );
+      const cell = cellFromTarget(target);
+      if (cell && (cell.row !== selection.endRow || cell.col !== selection.endCol)) {
+        selection = { ...selection, endRow: cell.row, endCol: cell.col };
+      }
+    }
+    window.addEventListener("pointermove", onMove);
+    frame = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(frame);
+    };
+  });
+
   // --- Scrollbars a medida -------------------------------------------
   // El scroll real (rueda, trackpad, flechas) sigue siendo el nativo del
   // div con overflow:auto; solo se oculta su indicador visual y se dibujan
@@ -2362,7 +2453,7 @@
               <button
                 type="button"
                 class="null-chip"
-                use:tooltip={$t("grid.edit.setNull")}
+                use:tooltip={{ label: $t("grid.edit.setNull"), shortcut: "Ctrl+Shift+N" }}
                 onpointerdown={(event) => event.preventDefault()}
                 onclick={setEditingNull}>NULL</button
               >

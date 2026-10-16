@@ -441,9 +441,25 @@
     else openTerminal();
   }
 
+  // La primera sesion que crea la terminal al abrirse: el shell, o el
+  // cliente de la base si se abrio con la terminal conectada (#107).
+  let terminalStart = $state<"shell" | "database">("shell");
+
+  // Ctrl+Shift+D: una sesion del cliente de la base; si la terminal estaba
+  // cerrada, esa es su primera sesion.
+  function openDatabaseTerminal() {
+    if (terminalActive && terminalView) {
+      terminalView.addDatabase();
+      terminalView.focus();
+      return;
+    }
+    openTerminal("database");
+  }
+
   // El icono de la fila: siempre la abre (abierta, la fila queda tapada).
-  function openTerminal() {
+  function openTerminal(start: "shell" | "database" = "shell") {
     if (terminalActive) return;
+    terminalStart = start;
     terminalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     terminalActive = true;
     if (!TerminalDock) void import("$lib/components/Terminal.svelte").then((module) => (TerminalDock = module.default));
@@ -458,7 +474,9 @@
   }
 
 
-  $effect(() => registerCommands("global", { "toggle-terminal": toggleTerminal }));
+  $effect(() =>
+    registerCommands("global", { "toggle-terminal": toggleTerminal, "new-database-terminal": openDatabaseTerminal }),
+  );
 
   // Ctrl+Tab y Ctrl+1..9 fuera del panel inferior y de la terminal: las
   // consolas del grupo enfocado (workspace/tabCommands.ts).
@@ -1513,7 +1531,7 @@
         terminal={TerminalDock ? terminalDock : undefined}
         {terminalActive}
         tiles={resultConsole ? resultTiles : undefined}
-        onterminal={resultConsole ? undefined : openTerminal}
+        onterminal={resultConsole ? undefined : () => openTerminal()}
       />
       {#snippet resultTiles()}
         {#if resultLayout}
@@ -1607,7 +1625,7 @@
             onsubmit={() => void submitChanges(key)}
             onnotice={notifyError}
                 tabCommands={group === layout.focus}
-            onterminal={group === cornerGroup(layout.tree, "right") ? openTerminal : undefined}
+            onterminal={group === cornerGroup(layout.tree, "right") ? () => openTerminal() : undefined}
             dimmed={resultGrouped && group !== layout.focus}
           />
         {/if}
@@ -1621,6 +1639,8 @@
             onerror={notifyError}
             onback={closeTerminal}
             backKeys={shortcutKeys("toggle-terminal")}
+            databaseKeys={shortcutKeys("new-database-terminal")}
+            start={terminalStart}
           />
         {/if}
       {/snippet}

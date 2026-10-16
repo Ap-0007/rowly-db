@@ -32,7 +32,7 @@ const CONTEXT: ConnectionEngineContext = {
 function explorer(schema: string): DatabaseExplorer {
   return {
     context: CONTEXT, tls: { encrypted: false, detail: null, fellBack: false },
-    defaultSchema: schema, availableSchemas: [schema],
+    defaultSchema: schema, availableSchemas: [schema], database: null, availableDatabases: [],
     schemas: [{ schema, tables: [], routines: [], sequences: [], events: [], warnings: [] }],
   };
 }

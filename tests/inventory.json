@@ -2,17 +2,17 @@
   "format": 1,
   "about": "Inventario de tests de Rowly DB. Ver tools/inventory/tests.mjs; los campos manuales se editan aqui.",
   "summary": {
-    "files": 152,
-    "tests": 1597,
+    "files": 154,
+    "tests": 1604,
     "ignored": 32,
     "byDecision": {
-      "keep": 152,
+      "keep": 154,
       "move": 0,
       "rewrite": 0,
       "remove": 0
     },
     "byGate": {
-      "pr": 145,
+      "pr": 147,
       "engine-pr": 7,
       "manual": 0,
       "release": 0
@@ -334,7 +334,7 @@
       "decision": "keep",
       "kind": "rust",
       "crate": "app/src-tauri",
-      "tests": 12,
+      "tests": 13,
       "ignored": 0,
       "environment": "none",
       "env": [],
@@ -1680,6 +1680,26 @@
       "durationMs": 11
     },
     {
+      "path": "app/src/lib/results/gridAutoScroll.test.ts",
+      "domain": "results",
+      "owner": "app/src/lib/components/results/DataGrid.svelte",
+      "property": "Al arrastrar una selección más allá del borde de la grilla, la vista se desplaza hacia ese lado con una velocidad que crece con la distancia y tiene tope (#98)",
+      "risk": "P2",
+      "gate": "pr",
+      "decision": "keep",
+      "kind": "ts",
+      "tests": 5,
+      "ignored": 0,
+      "environment": "node",
+      "dependencies": [
+        "gridAutoScroll"
+      ],
+      "external": [
+        "vitest"
+      ],
+      "durationMs": null
+    },
+    {
       "path": "app/src/lib/results/gridClipboard.test.ts",
       "domain": "results",
       "owner": "app/src/lib/results/gridClipboard.ts",
@@ -2978,6 +2998,22 @@
       "durationMs": 300
     },
     {
+      "path": "crates/engine/src/dialects/mod.rs",
+      "domain": "sql-engine",
+      "owner": "crates/engine/src/dialects/mod.rs",
+      "property": "La terminal conectada abre el cliente de cada motor con host, puerto, usuario y base, y sin base omite su argumento (#107)",
+      "risk": "P2",
+      "gate": "pr",
+      "decision": "keep",
+      "kind": "rust",
+      "crate": "crates/engine",
+      "tests": 1,
+      "ignored": 0,
+      "environment": "none",
+      "env": [],
+      "durationMs": null
+    },
+    {
       "path": "crates/engine/src/editing.rs",
       "domain": "sql-engine",
       "owner": "crates/engine/src/editing.rs",
@@ -3258,7 +3294,8 @@
       "environment": "real-server",
       "env": [
         "ROWLY_FUZZ_CASES",
-        "ROWLY_FUZZ_SEED"
+        "ROWLY_FUZZ_SEED",
+        "ROWLY_FUZZ_SEEDS"
       ],
       "durationMs": null
     },

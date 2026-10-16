@@ -322,8 +322,13 @@ mod contract {
             let text = std::fs::read_to_string(&path).unwrap();
             let code = text.split("#[cfg(test)]").next().unwrap();
             for (number, line) in code.lines().enumerate() {
-                // El id de una definicion es su registro, no una comparacion.
-                if line.trim_start().starts_with("id:") || line.trim_start().starts_with("//") {
+                // El id de una definicion es su registro, y los programas de
+                // su cliente (`mysql`, `psql`) son datos: no comparaciones.
+                let line_start = line.trim_start();
+                if ["id:", "programs:", "//"]
+                    .iter()
+                    .any(|prefix| line_start.starts_with(prefix))
+                {
                     continue;
                 }
                 if named.iter().any(|name| line.contains(name.as_str())) {

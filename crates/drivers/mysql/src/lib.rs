@@ -61,14 +61,17 @@ const SESSION_DEFAULTS: &str = "SET NAMES utf8mb4, sql_mode = IF( \
     TRIM(BOTH ',' FROM REPLACE(CONCAT(',', @@session.sql_mode, ','), ',IGNORE_SPACE,', ',')))";
 
 async fn open_pool(config: &ConnectionConfig, mode: TlsMode) -> Result<MySqlPool, sqlx::Error> {
-    let options = session_options(
-        MySqlConnectOptions::new()
-            .host(&config.host)
-            .port(config.port)
-            .username(&config.username)
-            .password(&config.password)
-            .database(&config.database),
-    );
+    let mut options = MySqlConnectOptions::new()
+        .host(&config.host)
+        .port(config.port)
+        .username(&config.username)
+        .password(&config.password);
+    // Sin base, la conexion queda en el servidor y el explorador ofrece
+    // todas sus bases como schemas (#105; ver current_schema).
+    if !config.database.trim().is_empty() {
+        options = options.database(config.database.trim());
+    }
+    let options = session_options(options);
     MySqlPoolOptions::new()
         .acquire_timeout(CONNECT_TIMEOUT)
         .after_connect(|conn, _meta| {

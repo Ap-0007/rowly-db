@@ -48,6 +48,7 @@
     pendingCount,
     setCellValue,
     fillCells,
+    type CellInput,
     type CellValue,
     type PendingEdits,
     type ResultEditInfo,
@@ -291,7 +292,7 @@
 
   // Lo escrito con varias celdas seleccionadas: en todas, un solo paso de
   // deshacer (que vuelve hasta el rango entero).
-  function fillSelectedCells(ranges: RowRange[], value: CellValue, hidden: ReadonlySet<number> | null) {
+  function fillSelectedCells(ranges: RowRange[], value: CellInput, hidden: ReadonlySet<number> | null) {
     if (!editInfo || ranges.length === 0) return;
     const at = {
       minRow: Math.min(...ranges.map((range) => range.minRow)),

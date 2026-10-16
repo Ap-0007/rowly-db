@@ -17,6 +17,7 @@
 //! al pasar xterm de 50 MB pendientes la terminal quedaba muerta.
 
 use khipu_driver_core::Message;
+use khipu_engine::dialects::CliClient;
 use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -173,7 +174,84 @@ fn shell_command(cwd: Option<String>) -> (CommandBuilder, String, String) {
         let shell = command.get_shell();
         (command, shell)
     };
+    let dir = prepare(&mut command, cwd);
+    let name = Path::new(&shell)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or(shell);
+    (command, name, dir)
+}
 
+/// Donde arranca una sesion: la carpeta SQL del perfil y, en una terminal
+/// conectada, la conexion a la que abre el cliente (sin ella, el shell).
+#[derive(serde::Deserialize)]
+pub struct TerminalStart {
+    cwd: Option<String>,
+    client: Option<ClientTarget>,
+}
+
+/// La conexion a la que abre el cliente una terminal conectada (#107). La
+/// contraseña viaja solo al entorno de ese proceso; sin ella, el cliente
+/// la pide.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientTarget {
+    host: String,
+    port: u16,
+    username: String,
+    database: String,
+    password: Option<String>,
+}
+
+/// El cliente del motor de la conexion (`cli_client` de su definicion),
+/// conectado a `target`: el primero de sus programas que este en el PATH.
+fn client_command(
+    client: CliClient,
+    target: ClientTarget,
+    cwd: Option<String>,
+    path: Option<&OsStr>,
+) -> Result<(CommandBuilder, String, String), Message> {
+    let program = client
+        .programs
+        .iter()
+        .find_map(|name| find_program(name, path))
+        .ok_or_else(|| {
+            Message::key("terminal.clientNotFound").with("programs", client.programs.join(", "))
+        })?;
+    let mut command = CommandBuilder::new(&program);
+    command.args(client.arguments(
+        &target.host,
+        target.port,
+        &target.username,
+        &target.database,
+    ));
+    let dir = prepare(&mut command, cwd);
+    match target.password.filter(|password| !password.is_empty()) {
+        Some(password) => command.env(client.password_env, password),
+        None => command.env_remove(client.password_env),
+    }
+    let name = program
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok((command, name, dir))
+}
+
+/// `name` en alguna carpeta de `path` (en Windows, tambien `name.exe`).
+fn find_program(name: &str, path: Option<&OsStr>) -> Option<PathBuf> {
+    let candidates: &[String] = if cfg!(windows) {
+        &[format!("{name}.exe"), name.to_string()]
+    } else {
+        &[name.to_string()]
+    };
+    std::env::split_paths(path?)
+        .flat_map(|dir| candidates.iter().map(move |file| dir.join(file)))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Lo comun a toda sesion: la carpeta y el entorno. Devuelve la carpeta
+/// para la cabecera.
+fn prepare(command: &mut CommandBuilder, cwd: Option<String>) -> String {
     // La carpeta SQL del perfil; si no hay o ya no existe, HOME.
     let home = command
         .get_env(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
@@ -205,11 +283,7 @@ fn shell_command(cwd: Option<String>) -> (CommandBuilder, String, String) {
             }
         }
     }
-    let name = Path::new(&shell)
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or(shell);
-    (command, name, shown_dir(dir.as_deref(), home.as_deref()))
+    shown_dir(dir.as_deref(), home.as_deref())
 }
 
 fn shown_dir(dir: Option<&Path>, home: Option<&Path>) -> String {
@@ -406,11 +480,31 @@ pub async fn create_terminal(
     state: tauri::State<'_, crate::state::AppState>,
     cols: u16,
     rows: u16,
-    cwd: Option<String>,
+    start: TerminalStart,
     output: Channel<InvokeResponseBody>,
     exit: Channel<Option<u32>>,
 ) -> Result<TerminalInfo, Message> {
-    let (command, shell, cwd) = shell_command(cwd);
+    let TerminalStart { cwd, client } = start;
+    let (command, shell, cwd) = match client {
+        None => shell_command(cwd),
+        // El cliente es el del motor de la conexion de esta ventana.
+        Some(target) => {
+            let dialect = state
+                .connections
+                .lock()
+                .expect("connections mutex poisoned")
+                .get(window.label())
+                .map(|active| active.dialect)
+                .ok_or_else(|| Message::key("terminal.noConnection"))?;
+            let path = std::env::var_os("PATH");
+            client_command(
+                dialect.definition().cli_client,
+                target,
+                cwd,
+                path.as_deref(),
+            )?
+        }
+    };
     let id = open(
         &state.terminals,
         window.label(),
@@ -776,9 +870,72 @@ mod tests {
 
 #[cfg(test)]
 mod shell_tests {
-    use super::{Outside, outside_appdir, shown_dir, windows_shell};
+    use super::{ClientTarget, Outside, client_command, outside_appdir, shown_dir, windows_shell};
+    use khipu_engine::Dialect;
     use std::fs;
     use std::path::{MAIN_SEPARATOR, Path};
+
+    fn target(password: Option<&str>) -> ClientTarget {
+        ClientTarget {
+            host: "db.local".into(),
+            port: 5433,
+            username: "ana".into(),
+            database: "pagila".into(),
+            password: password.map(Into::into),
+        }
+    }
+
+    /// La terminal conectada (#107): el primer programa del motor que este
+    /// en el PATH, con la conexion, y la contraseña solo en su entorno.
+    #[test]
+    fn la_terminal_conectada_abre_el_cliente_del_motor_con_la_conexion() {
+        let bin = std::env::temp_dir().join(format!("rowly-cli-{}", std::process::id()));
+        fs::create_dir_all(&bin).unwrap();
+        let file = if cfg!(windows) { "mysql.exe" } else { "mysql" };
+        fs::write(bin.join(file), "").unwrap();
+        let path = std::env::join_paths([bin.as_path()]).unwrap();
+
+        // MariaDB prefiere `mariadb`; sin el, sirve `mysql`.
+        let client = Dialect::MariaDb.definition().cli_client;
+        let (command, name, _) =
+            client_command(client, target(Some("s3creta")), None, Some(&path)).unwrap();
+        assert_eq!(name, "mysql");
+        let argv: Vec<String> = command
+            .get_argv()
+            .iter()
+            .skip(1)
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            argv,
+            [
+                "--protocol=TCP",
+                "-h",
+                "db.local",
+                "-P",
+                "5433",
+                "-u",
+                "ana",
+                "pagila"
+            ]
+        );
+        assert_eq!(
+            command.get_env("MYSQL_PWD").and_then(|v| v.to_str()),
+            Some("s3creta")
+        );
+
+        // Sin contraseña guardada, el cliente la pide: no hereda otra.
+        let (command, _, _) = client_command(client, target(None), None, Some(&path)).unwrap();
+        assert!(command.get_env("MYSQL_PWD").is_none());
+
+        // Sin el cliente instalado, el error dice cual buscar.
+        let postgres = Dialect::Postgres.definition().cli_client;
+        let error = client_command(postgres, target(None), None, Some(&path))
+            .err()
+            .unwrap();
+        assert!(format!("{error:?}").contains("psql"), "{error:?}");
+        fs::remove_dir_all(&bin).unwrap();
+    }
 
     #[test]
     fn la_cabecera_muestra_la_carpeta_con_virgulilla_por_home() {

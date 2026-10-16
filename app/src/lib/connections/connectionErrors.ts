@@ -51,7 +51,9 @@ export function explainConnectionFailure(
   t: Translate = translate,
 ): ExplainedFailure {
   if (failure.kind === "other") return { title: null, hint: null, detail: failure.detail };
-  const params = { host: target.host, port: target.port, database: target.database };
+  // Un perfil sin base (#105) no tiene nombre que mostrar: se dice cual es.
+  const database = target.database || t("connections.form.databaseAll");
+  const params = { host: target.host, port: target.port, database };
   return {
     title: t(`connections.failure.${failure.kind}.title`, params),
     hint: t(`connections.failure.${failure.kind}.hint`, params),

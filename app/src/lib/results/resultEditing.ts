@@ -53,6 +53,31 @@ export function sameValue(a: CellValue, b: CellValue): boolean {
   return a.kind !== "text" || a.value === (b as { value: string }).value;
 }
 
+// Lo que va a una celda: un valor, o una regla que lo decide por columna y
+// segun la fila sea nueva (escribir NULL, Supr; ver typedCell y clearedCell).
+export type CellInput = CellValue | ((column: EditableColumn, isNewRow: boolean) => CellValue);
+
+export function resolveCell(input: CellInput, column: EditableColumn, isNewRow: boolean): CellValue {
+  return typeof input === "function" ? input(column, isNewRow) : input;
+}
+
+// Lo escrito en el editor (#104). En una columna que admite NULL, `NULL` es
+// NULL y `'NULL'` es el texto NULL; en cualquier otra, el texto tal cual.
+export function typedCell(text: string): CellInput {
+  return (column) => {
+    if (!column.nullable) return { kind: "text", value: text };
+    if (/^null$/i.test(text)) return { kind: "null" };
+    if (/^'null'$/i.test(text)) return { kind: "text", value: text.slice(1, -1) };
+    return { kind: "text", value: text };
+  };
+}
+
+// Supr sobre una celda (#104): NULL, o DEFAULT en una fila nueva cuya
+// columna tiene un valor por defecto (lo que tenia al agregarla).
+export function clearedCell(): CellInput {
+  return (column, isNewRow) => (isNewRow && column.defaultValue !== null ? { kind: "default" } : { kind: "null" });
+}
+
 export function originalValue(raw: string | null): CellValue {
   return raw === null ? { kind: "null" } : { kind: "text", value: raw };
 }
@@ -82,8 +107,8 @@ export function setCellValue(
   return { ...edits, updates };
 }
 
-// Escribir con varias celdas seleccionadas: el mismo valor en todas, en un
-// solo paso de deshacer. Se saltan las columnas de solo lectura o generadas,
+// Escribir con varias celdas seleccionadas: el mismo valor (o la misma regla,
+// resuelta por columna) en todas, en un solo paso de deshacer. Se saltan las columnas de solo lectura o generadas,
 // las filas marcadas para eliminar (como al pegar) y las `hidden` (ocultas
 // por "Filtrar filas": como al copiar, lo que no se ve no se toca).
 export function fillCells(
@@ -91,7 +116,7 @@ export function fillCells(
   info: ResultEditInfo,
   rows: readonly QueryRow[],
   ranges: readonly RowRange[],
-  value: CellValue,
+  input: CellInput,
   hidden: ReadonlySet<number> | null = null,
 ): PendingEdits {
   const updates = new Map<number, Map<number, CellValue>>(
@@ -106,6 +131,7 @@ export function fillCells(
       for (let col = range.minCol; col <= Math.min(range.maxCol, info.columns.length - 1); col++) {
         const column = info.columns[col];
         if (!column || column.generated) continue;
+        const value = resolveCell(input, column, row >= base);
         if (row >= base) {
           inserted[row - base][col] = value;
           continue;

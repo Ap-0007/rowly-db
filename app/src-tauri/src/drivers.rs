@@ -41,6 +41,11 @@ pub struct ConnectedDatabase {
     /// `DbConnector::current_schema`); always loaded, never hidden.
     pub default_schema: String,
     pub available_schemas: Vec<String>,
+    /// The database this connection is on and the others the profile can
+    /// switch to, where databases are separate connections (Postgres);
+    /// `None` and empty elsewhere (see `DbConnector::list_databases`).
+    pub database: Option<String>,
+    pub available_databases: Vec<String>,
     pub default_objects: SchemaObjects,
 }
 
@@ -114,6 +119,15 @@ async fn open<C: DbConnector + 'static>(connector: C) -> Result<ConnectedDatabas
         available_schemas.push(default_schema.clone());
         available_schemas.sort();
     }
+    // Igual que los schemas: sin permiso para listarlas, solo la actual.
+    let database = connector.current_database().await.unwrap_or(None);
+    let mut available_databases = connector.list_databases().await.unwrap_or_default();
+    if let Some(current) = &database
+        && !available_databases.contains(current)
+    {
+        available_databases.push(current.clone());
+        available_databases.sort();
+    }
 
     Ok(ConnectedDatabase {
         server: connector.server(),
@@ -121,6 +135,8 @@ async fn open<C: DbConnector + 'static>(connector: C) -> Result<ConnectedDatabas
         connector: Arc::new(connector),
         default_schema,
         available_schemas,
+        database,
+        available_databases,
         default_objects,
     })
 }

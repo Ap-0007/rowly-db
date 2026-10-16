@@ -6,6 +6,7 @@
   import { onePerFrame } from "$lib/onePerFrame";
   import { editorPalette } from "$lib/theming/theme";
   import { sqlFolders } from "$lib/stores/sqlFolders";
+  import { databaseClientTarget } from "$lib/stores/connection";
   import type { EditorPalette } from "$lib/theming/palettes";
   import { backendText } from "$lib/backend";
   import { ackTerminal, closeTerminal, createTerminal, resizeTerminal, writeTerminal, type TerminalInfo } from "$lib/terminal";
@@ -17,6 +18,7 @@
     visible,
     focused = visible,
     profileId,
+    database = false,
     oninfo,
     onexit,
     onerror,
@@ -25,6 +27,8 @@
     focused?: boolean;
     // El shell arranca en la carpeta SQL de este perfil; sin ella, en HOME.
     profileId: string;
+    // En vez del shell, el cliente del motor conectado a la base (#107).
+    database?: boolean;
     oninfo: (info: TerminalInfo) => void;
     // El shell termino (exit): el dueño quita la sesion.
     onexit: () => void;
@@ -156,10 +160,14 @@
     });
     const opened = term;
     try {
-      info = await createTerminal(opened.cols, opened.rows, get(sqlFolders).folderByProfile[profileId] ?? null, {
-        output: enqueueOutput,
-        exit: () => onexit(),
-      });
+      const client = database ? await databaseClientTarget(profileId) : null;
+      info = await createTerminal(
+        opened.cols,
+        opened.rows,
+        get(sqlFolders).folderByProfile[profileId] ?? null,
+        { output: enqueueOutput, exit: () => onexit() },
+        client,
+      );
     } catch (error) {
       onerror(backendText(error));
       onexit();

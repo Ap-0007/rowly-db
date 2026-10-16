@@ -205,6 +205,10 @@ export interface DatabaseExplorer {
   tls: TlsStatus;
   defaultSchema: string;
   availableSchemas: string[];
+  // Donde cada base es otra conexion (PostgreSQL): en cual se esta y a
+  // cuales se puede pasar. null y vacio en los demas motores.
+  database: string | null;
+  availableDatabases: string[];
   // El schema por defecto primero, el resto en orden alfabetico.
   schemas: SchemaObjects[];
 }
