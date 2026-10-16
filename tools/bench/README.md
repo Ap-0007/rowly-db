@@ -69,7 +69,7 @@ Compare only against a reference taken on the same machine and system:
 
 ## Resource cycles
 
-`app/tests/e2e/resources.mjs` runs in the E2E workflow (Linux/WebKitGTK) and is a gate, not a number to compare: it opens the real app with the WebKit remote inspector, drives it with clicks and DOM events, and measures what gives a leak away.
+`app/tests/e2e/resources.mjs` runs in the Resources workflow (Linux/WebKitGTK, one job per scenario) and is a gate, not a number to compare: it opens the real app with the WebKit remote inspector, drives it with clicks and DOM events, and measures what gives a leak away.
 
 | Cycle | What it does | Gate |
 |---|---|---|
@@ -85,7 +85,7 @@ In all of them, from the warm-up (cycle 50) on, nothing grows: the live JavaScri
 
 The WebKitWebProcess PSS is reported but is not a gate: it rises with memory the collector already freed and WebKit keeps, and flattens on its own (over 1500 reconnections, around 600–700, with and without the JIT) while the live heap stays flat. At idle, under Xvfb without a GPU, the blinking cursor and the GTK compositor take ~3 % of one core.
 
-Locally: `xvfb-run node app/tests/e2e/resources.mjs --app <binary>`, with `run.mjs`'s databases and PostgreSQL on `E2E_PG_PORT`/`E2E_PG_USER`. `E2E_ONLY` picks a cycle; `E2E_RECONNECTIONS`, `E2E_CONSOLE_CYCLES`, `E2E_TERMINAL_CYCLES` and `E2E_IDLE_SECONDS` change their length.
+Locally: `xvfb-run node app/tests/e2e/resources.mjs --app <binary>`, with `run.mjs`'s databases and PostgreSQL on `E2E_PG_PORT`/`E2E_PG_USER`. `E2E_SCENARIOS=consoles,terminal-idle` picks cycles by id (an unknown or empty id fails), and `--report <file>` writes each one's result; `E2E_RECONNECTIONS`, `E2E_CONSOLE_CYCLES`, `E2E_TERMINAL_CYCLES` and `E2E_IDLE_SECONDS` change their length.
 
 ## Keystroke-to-paint and grid frames
 

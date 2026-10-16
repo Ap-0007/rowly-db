@@ -69,7 +69,7 @@ Compara solo con una referencia tomada en la misma máquina y el mismo sistema:
 
 ## Ciclos de recursos
 
-`app/tests/e2e/resources.mjs` corre en el workflow E2E (Linux/WebKitGTK) y es una compuerta, no un número para comparar: abre la app real con el inspector remoto de WebKit, la maneja con clics y eventos en el DOM y mide lo que delata una fuga.
+`app/tests/e2e/resources.mjs` corre en el workflow Recursos (Linux/WebKitGTK, un job por escenario) y es una compuerta, no un número para comparar: abre la app real con el inspector remoto de WebKit, la maneja con clics y eventos en el DOM y mide lo que delata una fuga.
 
 | Ciclo | Qué hace | Compuerta |
 |---|---|---|
@@ -85,7 +85,7 @@ En todos, desde el calentamiento (ciclo 50), no crecen el heap de JavaScript viv
 
 El PSS del WebKitWebProcess se informa, pero no es compuerta: sube con la memoria que el recolector ya liberó y WebKit retiene, y se aplana solo (con 1500 reconexiones, hacia la 600–700, con JIT y sin él), mientras el heap vivo queda plano. En reposo, bajo Xvfb y sin GPU, el cursor que parpadea y el compositor de GTK son ~3 % de un núcleo.
 
-En local: `xvfb-run node app/tests/e2e/resources.mjs --app <binario>`, con las bases de `run.mjs` y PostgreSQL en `E2E_PG_PORT`/`E2E_PG_USER`. `E2E_ONLY` elige un ciclo; `E2E_RECONNECTIONS`, `E2E_CONSOLE_CYCLES`, `E2E_TERMINAL_CYCLES` y `E2E_IDLE_SECONDS` cambian su largo.
+En local: `xvfb-run node app/tests/e2e/resources.mjs --app <binario>`, con las bases de `run.mjs` y PostgreSQL en `E2E_PG_PORT`/`E2E_PG_USER`. `E2E_SCENARIOS=consoles,terminal-idle` elige ciclos por id (un id desconocido o vacío falla), y `--report <archivo>` escribe el resultado de cada uno; `E2E_RECONNECTIONS`, `E2E_CONSOLE_CYCLES`, `E2E_TERMINAL_CYCLES` y `E2E_IDLE_SECONDS` cambian su largo.
 
 ## Tecla a pintado y cuadros del grid
 

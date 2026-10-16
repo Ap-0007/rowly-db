@@ -1,0 +1,54 @@
+name: App build
+
+# La app de depuracion (sin instaladores) que usan los recorridos E2E y los
+# ciclos de recursos: se compila una vez por corrida y viaja como artefacto.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+
+env:
+  CARGO_TERM_COLOR: always
+  APT: libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf build-essential curl wget file libssl-dev libgtk-3-dev
+
+jobs:
+  build:
+    name: Compilar la app (debug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Dependencias de Tauri
+        run: sudo apt-get update && sudo apt-get install -y $APT
+
+      - uses: dtolnay/rust-toolchain@1.90
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: app-debug
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: npm ci
+        working-directory: app
+        run: npm ci
+
+      - name: Compilar la app (debug, sin instaladores)
+        working-directory: app
+        run: npx tauri build --debug --no-bundle
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-app
+          path: target/debug/rowly-db
+          retention-days: 1
