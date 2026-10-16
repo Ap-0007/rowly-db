@@ -1,0 +1,23 @@
+name: Site
+
+# La web (site/) generada y comprobada antes de fusionar: en un dominio propio
+# y en la subruta de GitHub Pages (.github/scripts/check-site.py). Publicarla
+# sigue siendo cosa de pages.yml.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ""
+
+jobs:
+  site:
+    name: Web (generar y comprobar)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Generar y comprobar
+        run: python3 .github/scripts/check-site.py
